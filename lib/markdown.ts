@@ -251,6 +251,6 @@ export function idFromFileName(name: string): number | null {
 }
 
 export function copyPrompt(fileName: string, archived = false): string {
-  const path = archived ? `.bugnotes/archive/${fileName}` : `.bugnotes/${fileName}`;
-  return `\`.bugnotes/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.`;
+  const path = archived ? `.pinproof/archive/${fileName}` : `.pinproof/${fileName}`;
+  return `\`.pinproof/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.`;
 }

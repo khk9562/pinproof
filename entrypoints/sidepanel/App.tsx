@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { PickMode } from '@/lib/messages';
 import { Evidence, KIND_LABEL, RECORD_TYPES, RecordSummary } from '@/lib/types';
-import { BugNotes, useBugNotes } from './useBugNotes';
+import { PinProof, usePinProof } from './usePinProof';
 
 export function App() {
-  const bn = useBugNotes();
+  const bn = usePinProof();
 
   if (!bn.origin) {
     return (
@@ -38,7 +38,7 @@ export function App() {
 }
 
 /** 입력칸 밖에서 ⌘V 하면(패널에 포커스가 있을 때) 바로 증거로 담는다 */
-function PanelPaste({ bn }: { bn: BugNotes }) {
+function PanelPaste({ bn }: { bn: PinProof }) {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -56,13 +56,13 @@ function PanelPaste({ bn }: { bn: BugNotes }) {
 function Brand() {
   return (
     <header className="brand">
-      <span className="logo">BN</span>
-      <span>BugNotes</span>
+      <span className="logo">PP</span>
+      <span>PinProof</span>
     </header>
   );
 }
 
-function ConnectionBar({ bn }: { bn: BugNotes }) {
+function ConnectionBar({ bn }: { bn: PinProof }) {
   const host = bn.origin!.replace(/^https?:\/\//, '');
   return (
     <section className="conn">
@@ -93,6 +93,16 @@ function ConnectionBar({ bn }: { bn: BugNotes }) {
           </button>
         </div>
       )}
+      {bn.connection === 'granted' && bn.legacy && (
+        <div className="wf-update">
+          <span>
+            이전 이름의 폴더 <code>.bugnotes/</code>가 있습니다. <code>.pinproof/</code>로 옮길까요?
+          </span>
+          <button className="btn primary" onClick={bn.moveLegacy}>
+            옮기기
+          </button>
+        </div>
+      )}
       {bn.connection === 'granted' && bn.workflow && (
         <div className="wf-update">
           <span>
@@ -105,7 +115,7 @@ function ConnectionBar({ bn }: { bn: BugNotes }) {
       )}
       {bn.connection === 'none' && (
         <p className="muted small">
-          고른 폴더에 <code>.bugnotes/</code>와 <code>/bugnotes</code> 커맨드를 만들고, git 저장소면 <code>.gitignore</code>에
+          고른 폴더에 <code>.pinproof/</code>와 <code>/pinproof</code> 커맨드를 만들고, git 저장소면 <code>.gitignore</code>에
           추가합니다. 만들기 전에 목록을 보여드립니다.
         </p>
       )}
@@ -119,7 +129,7 @@ const MODES: { mode: PickMode; label: string; key: string }[] = [
   { mode: 'region', label: '영역', key: 'R' },
 ];
 
-function ModeBar({ bn }: { bn: BugNotes }) {
+function ModeBar({ bn }: { bn: PinProof }) {
   return (
     <section className="modes">
       {MODES.map((m) => (
@@ -148,7 +158,7 @@ const MODE_HINT: Record<PickMode, string> = {
   region: '페이지에서 사각형을 드래그해 담기 · Esc 종료',
 };
 
-function NoDraft({ bn }: { bn: BugNotes }) {
+function NoDraft({ bn }: { bn: PinProof }) {
   return (
     <section className="nodraft">
       <p className="muted">작성 중인 기록이 없습니다. 지금 담는 증거는 미분류로 갑니다.</p>
@@ -159,7 +169,7 @@ function NoDraft({ bn }: { bn: BugNotes }) {
   );
 }
 
-function DraftCard({ bn }: { bn: BugNotes }) {
+function DraftCard({ bn }: { bn: PinProof }) {
   const d = bn.draft!;
   return (
     <section className="draft">
@@ -233,7 +243,7 @@ function DraftCard({ bn }: { bn: BugNotes }) {
 }
 
 /** 클립보드 이미지·텍스트를 ⌘V로 붙여넣거나 파일을 끌어다 놓아 증거로 담는 곳 */
-function PasteZone({ bn }: { bn: BugNotes }) {
+function PasteZone({ bn }: { bn: PinProof }) {
   const [over, setOver] = useState(false);
   return (
     <div
@@ -398,7 +408,7 @@ function EvidenceCard(props: {
   );
 }
 
-function InboxSection({ bn }: { bn: BugNotes }) {
+function InboxSection({ bn }: { bn: PinProof }) {
   const [open, setOpen] = useState(true);
   if (bn.inbox.length === 0) return null;
   return (
@@ -423,7 +433,7 @@ function InboxSection({ bn }: { bn: BugNotes }) {
   );
 }
 
-function RecordList({ bn }: { bn: BugNotes }) {
+function RecordList({ bn }: { bn: PinProof }) {
   const [showArchived, setShowArchived] = useState(false);
   const list = bn.records.filter((r) => r.archived === showArchived);
   return (
@@ -444,7 +454,7 @@ function RecordList({ bn }: { bn: BugNotes }) {
   );
 }
 
-function RecordRow({ r, bn }: { r: RecordSummary; bn: BugNotes }) {
+function RecordRow({ r, bn }: { r: RecordSummary; bn: PinProof }) {
   const editing = bn.draft?.id === r.id;
   return (
     <div className={`rec ${editing ? 'editing' : ''}`}>

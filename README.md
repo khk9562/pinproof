@@ -1,13 +1,13 @@
-# BugNotes
+# PinProof
 
-개발 중인 웹 화면에서 버그·정합성 문제를 **증거와 함께** 기록해 프로젝트 폴더(`.bugnotes/`)에 쌓고, Claude Code가 `/bugnotes 12`로 건별 처리하게 하는 크롬 익스텐션입니다.
+개발 중인 웹 화면에서 버그·정합성 문제를 **증거와 함께** 기록해 프로젝트 폴더(`.pinproof/`)에 쌓고, Claude Code가 `/pinproof 12`로 건별 처리하게 하는 크롬 익스텐션입니다.
 
 - 요소 선택(개발자도구처럼 `↑↓←→`로 부모·자식·형제 이동), 텍스트 드래그, 영역 드래그, 현재 페이지의 API 호출 목록
 - 페이지를 옮겨도 "작성 중인 기록"에 증거가 계속 쌓임. 담은 결과는 사이드 패널에만 표시(페이지 위에는 고르는 동안의 하이라이트만)
 - 프레임워크와 무관하게 동작. React(16~19)는 컴포넌트 이름과 소스 위치(`src/App.tsx:238`)를 자동으로 덧붙임
 - localhost / 127.0.0.1 에서만 동작, 외부로 아무것도 보내지 않음
 
-설계 문서: [todo/bugnotes-design.md](todo/bugnotes-design.md)
+설계 문서: [todo/pinproof-design.md](todo/pinproof-design.md)
 
 ## 설치 (개발 버전)
 
@@ -18,16 +18,16 @@ npm run build
 
 1. Chrome에서 `chrome://extensions` 열기 → 오른쪽 위 **개발자 모드** 켜기
 2. **압축해제된 확장 프로그램 로드** → `.output/chrome-mv3` 폴더 선택
-3. 툴바의 퍼즐 아이콘에서 BugNotes를 고정(📌)
+3. 툴바의 퍼즐 아이콘에서 PinProof를 고정(📌)
 
-익스텐션 코드를 고친 뒤에는 `npm run build` 후 `chrome://extensions`의 BugNotes 카드에서 새로고침 버튼을 누르세요.
+익스텐션 코드를 고친 뒤에는 `npm run build` 후 `chrome://extensions`의 PinProof 카드에서 새로고침 버튼을 누르세요.
 
 ## 사용법
 
-1. 개발 중인 앱(`http://localhost:포트`)을 열고 툴바의 BugNotes 아이콘(또는 `Alt+Shift+B`)으로 사이드 패널을 엽니다.
+1. 개발 중인 앱(`http://localhost:포트`)을 열고 툴바의 PinProof 아이콘(또는 `Alt+Shift+B`)으로 사이드 패널을 엽니다.
    - 아이콘으로 패널을 열어야 그 탭에서 **스크린샷**이 허용됩니다(Chrome의 `activeTab` 규칙). 같은 앱 안에서 페이지를 옮겨도 유지됩니다.
 2. **프로젝트 폴더 연결** → 앱의 저장소 루트 폴더를 고릅니다. 만들 파일 목록을 보여주고 동의를 받습니다.
-   - `.bugnotes/WORKFLOW.md` (공통 처리 절차), `.claude/commands/bugnotes.md` (`/bugnotes` 커맨드)
+   - `.pinproof/WORKFLOW.md` (공통 처리 절차), `.claude/commands/pinproof.md` (`/pinproof` 커맨드)
    - git 저장소면 `.gitignore`에 둘 다 추가
 3. **+ 새 기록** → 제목·유형·연관·메모를 쓰고 증거를 담습니다.
 
@@ -47,30 +47,34 @@ npm run build
 ### Claude Code에 넘기기
 
 ```text
-/bugnotes        # 보관 안 된 기록 목록
-/bugnotes 12     # 12번 기록을 읽고 원인 분석 → (버그·수정 요청이면) 수정 → 파일 끝에 "## 처리 기록" 추가
+/pinproof        # 보관 안 된 기록 목록
+/pinproof 12     # 12번 기록을 읽고 원인 분석 → (버그·수정 요청이면) 수정 → 파일 끝에 "## 처리 기록" 추가
 ```
 
 claude.ai나 다른 에이전트에는 패널의 **복사** 버튼으로 프롬프트를 붙여넣으세요. 기록은 일반 Markdown이라 어떤 에이전트든 읽을 수 있습니다.
 
-화면에서 수정이 확인되면 목록의 **보관**을 누릅니다. md와 스크린샷이 `.bugnotes/archive/`로 옮겨지고(삭제 안 함) `/bugnotes` 목록에서 빠집니다.
+화면에서 수정이 확인되면 목록의 **보관**을 누릅니다. md와 스크린샷이 `.pinproof/archive/`로 옮겨지고(삭제 안 함) `/pinproof` 목록에서 빠집니다.
 
 필요 없는 기록은 목록의 **삭제**(작성 중이면 카드 아래 **기록 삭제**)로 지웁니다. 확인 창을 거쳐 md와 스크린샷이 프로젝트 폴더에서 지워지며 되돌릴 수 없습니다. 나중에 다시 볼 수도 있으면 보관을 쓰세요.
 
 ### 처리 절차(WORKFLOW.md) 업데이트
 
-익스텐션이 새 버전의 처리 절차를 갖고 있으면 패널 위쪽에 **처리 절차 새 버전 · [업데이트]**가 뜹니다. 누르면 `.bugnotes/WORKFLOW.md`가 교체됩니다(자동으로 바꾸지 않음). 프로젝트마다 덧붙일 규칙은 `.bugnotes/WORKFLOW.local.md`에 쓰세요. 익스텐션이 건드리지 않고, WORKFLOW가 함께 따르도록 안내합니다.
+익스텐션이 새 버전의 처리 절차를 갖고 있으면 패널 위쪽에 **처리 절차 새 버전 · [업데이트]**가 뜹니다. 누르면 `.pinproof/WORKFLOW.md`가 교체됩니다(자동으로 바꾸지 않음). 프로젝트마다 덧붙일 규칙은 `.pinproof/WORKFLOW.local.md`에 쓰세요. 익스텐션이 건드리지 않고, WORKFLOW가 함께 따르도록 안내합니다.
+
+### 이전 이름(BugNotes)에서 옮겨오기
+
+예전 버전으로 만든 `.bugnotes/` 폴더가 있는 프로젝트는 폴더를 연결할 때 확인 목록에 "옮기기"가 함께 표시되고, 이미 연결된 경우 패널에 **[옮기기]** 버튼이 뜹니다. 기록·스크린샷·보관함을 `.pinproof/`로 복사하고(덮어쓰지 않음), 모두 옮기면 `.bugnotes/`와 `/bugnotes` 커맨드를 지우고 `.gitignore`를 바꿉니다.
 
 ## 저장 구조
 
 ```
 프로젝트/
-├ .bugnotes/
+├ .pinproof/
 │  ├ WORKFLOW.md
 │  ├ 012-대시보드-총합-불일치.md     # 기록 1건 = md 1개
 │  ├ assets/012/A.png …
 │  └ archive/
-└ .claude/commands/bugnotes.md
+└ .claude/commands/pinproof.md
 ```
 
 - md의 `## 처리 기록` 아래는 익스텐션이 절대 덮어쓰지 않습니다. 기록을 다시 열어 증거를 추가해도 Claude의 처리 기록은 남습니다.

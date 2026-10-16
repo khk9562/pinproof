@@ -98,22 +98,22 @@ try {
   // ---------- 연결 ----------
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
   await panel.getByText('작성 중인 기록이 없습니다').waitFor();
-  check((await readOpfs('.bugnotes/WORKFLOW.md'))?.includes('# BugNotes 처리 절차'), 'WORKFLOW.md 생성');
-  check((await readOpfs('.claude/commands/bugnotes.md'))?.includes('$ARGUMENTS'), '/bugnotes 커맨드 생성');
-  check((await readOpfs('.bugnotes/WORKFLOW.md')).startsWith('<!-- bugnotes-workflow v'), 'WORKFLOW.md에 버전 표시');
+  check((await readOpfs('.pinproof/WORKFLOW.md'))?.includes('# PinProof 처리 절차'), 'WORKFLOW.md 생성');
+  check((await readOpfs('.claude/commands/pinproof.md'))?.includes('$ARGUMENTS'), '/pinproof 커맨드 생성');
+  check((await readOpfs('.pinproof/WORKFLOW.md')).startsWith('<!-- pinproof-workflow v'), 'WORKFLOW.md에 버전 표시');
   check(!(await panel.locator('.wf-update').isVisible()), '최신 버전이면 업데이트 버튼 없음');
   // 옛 버전(버전 표시 없음)으로 바꿔두면 [업데이트] 버튼이 뜨고, 누르면 교체된다
   await panel.evaluate(async () => {
-    const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('.bugnotes');
+    const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('.pinproof');
     const w = await (await d.getFileHandle('WORKFLOW.md')).createWritable();
-    await w.write('# BugNotes 처리 절차 (옛 버전)\n');
+    await w.write('# PinProof 처리 절차 (옛 버전)\n');
     await w.close();
   });
   await panel.locator('.wf-update').waitFor({ timeout: 8000 });
   panel.once('dialog', (d) => d.accept());
   await panel.locator('.wf-update').getByRole('button', { name: '업데이트' }).click();
   await panel.waitForTimeout(500);
-  check((await readOpfs('.bugnotes/WORKFLOW.md')).includes('재처리') && !(await panel.locator('.wf-update').isVisible()), '[업데이트]로 WORKFLOW.md 최신화');
+  check((await readOpfs('.pinproof/WORKFLOW.md')).includes('재처리') && !(await panel.locator('.wf-update').isVisible()), '[업데이트]로 WORKFLOW.md 최신화');
 
   // ---------- 미분류 ----------
   await panel.getByRole('button', { name: /^요소/ }).click();
@@ -135,14 +135,14 @@ try {
   await app.keyboard.press('ArrowDown');
   await app.keyboard.press('Enter');
   await panel.locator('.draft .ev').first().waitFor();
-  const labelText = await app.locator('bugnotes-overlay').evaluate((h) => h.shadowRoot.querySelector('.label').textContent);
+  const labelText = await app.locator('pinproof-overlay').evaluate((h) => h.shadowRoot.querySelector('.label').textContent);
   check(/<strong>/.test(labelText), `hover 라벨 표시: ${labelText}`);
 
   // 담은 결과는 사이드 패널에만: 방금 담은 카드에 요소 이름·selector 표시, 페이지에는 배지·토스트 없음
   const fresh = panel.locator('.ev.fresh');
   check((await fresh.locator('.target-name').textContent()) === '<strong>', '패널에 방금 담은 요소 이름 표시');
   check((await fresh.locator('.target-sel').textContent()) === '[data-testid="summary-total"]', '패널에 selector 표시');
-  const pageUi = await app.locator('bugnotes-overlay').evaluate((h) => ({
+  const pageUi = await app.locator('pinproof-overlay').evaluate((h) => ({
     markers: h.shadowRoot.querySelectorAll('.marker').length,
     toastVisible: !h.shadowRoot.querySelector('.toast').hidden,
   }));
@@ -191,7 +191,7 @@ try {
     s.addRange(r);
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
-  await app.locator('bugnotes-overlay .chip').click();
+  await app.locator('pinproof-overlay .chip').click();
   await panel.locator('.draft .ev').nth(1).waitFor();
 
   // ---------- 영역 ----------
@@ -241,10 +241,10 @@ try {
   await panel.waitForTimeout(1200);
 
   // ---------- 파일 확인 ----------
-  const names = await readOpfs('.bugnotes/');
+  const names = await readOpfs('.pinproof/');
   const mdName = names.split(',').find((n) => n.startsWith('001-'));
   check(mdName === '001-대시보드-총합-불일치.md', `md 파일명: ${mdName}`);
-  const md = await readOpfs(`.bugnotes/${mdName}`);
+  const md = await readOpfs(`.pinproof/${mdName}`);
   fs.writeFileSync(path.join(outDir, mdName), md ?? '');
   check(md.includes('related: "#589"') && md.includes('evidence: 7'), 'frontmatter');
   check(md.includes('### F. 붙여넣기 — /nodes') && md.includes('- 이미지: ![F](assets/001/F.png)'), 'F: 붙여넣은 이미지');
@@ -257,11 +257,11 @@ try {
   check(md.includes('### D. 컨테이너 — /nodes') && md.includes('헤더: 이름 | CPU') && md.includes('화면에 보이는 행: 3'), 'D: 다른 페이지의 테이블 컨테이너');
   check(md.includes('### E. 네트워크 — /nodes') && md.includes('/api/nodes') && md.includes('node-a') && md.includes('→ 403'), 'E: 네트워크(200 응답 본문 + 403)');
   check(!md.includes('x1a2b3c') || !/selector: `[^`]*x1a2b3c/.test(md), 'selector에 해시 클래스 없음');
-  const assets = await readOpfs('.bugnotes/assets/001/');
+  const assets = await readOpfs('.pinproof/assets/001/');
   check(assets === 'A.png,B.png,C.png,D.png,F.png', `스크린샷 파일: ${assets}`);
   const png = await panel.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
-    const d = await (await (await root.getDirectoryHandle('.bugnotes')).getDirectoryHandle('assets')).getDirectoryHandle('001');
+    const d = await (await (await root.getDirectoryHandle('.pinproof')).getDirectoryHandle('assets')).getDirectoryHandle('001');
     const f = await (await d.getFileHandle('A.png')).getFile();
     const bmp = await createImageBitmap(f);
     return { size: f.size, w: bmp.width, h: bmp.height, b64: btoa(String.fromCharCode(...new Uint8Array(await f.arrayBuffer()))) };
@@ -272,7 +272,7 @@ try {
   // ---------- 처리 기록 보존 ----------
   await panel.evaluate(async (name) => {
     const root = await navigator.storage.getDirectory();
-    const d = await root.getDirectoryHandle('.bugnotes');
+    const d = await root.getDirectoryHandle('.pinproof');
     const fh = await d.getFileHandle(name);
     const text = await (await fh.getFile()).text();
     const w = await fh.createWritable();
@@ -281,7 +281,7 @@ try {
   }, mdName);
   await panel.getByPlaceholder(/현상: 무엇이/).fill('메모 수정됨');
   await panel.waitForTimeout(1200);
-  const md2 = await readOpfs(`.bugnotes/${mdName}`);
+  const md2 = await readOpfs(`.pinproof/${mdName}`);
   check(md2.includes('메모 수정됨') && md2.includes('- 원인: 테스트로 덧붙인 처리 기록'), '익스텐션이 다시 써도 처리 기록 보존');
 
   await panel.setViewportSize({ width: 400, height: 1400 });
@@ -295,15 +295,15 @@ try {
   await panel.screenshot({ path: path.join(outDir, 'panel.png'), fullPage: true });
   await panel.locator('.rec-actions').getByRole('button', { name: '보관' }).click();
   await panel.waitForTimeout(500);
-  check((await readOpfs(`.bugnotes/archive/${mdName}`)) !== null && (await readOpfs(`.bugnotes/${mdName}`)) === null, '보관: archive/로 이동');
-  check((await readOpfs('.bugnotes/archive/assets/001/')) === 'A.png,B.png,C.png,D.png,F.png', '보관: 스크린샷도 이동');
+  check((await readOpfs(`.pinproof/archive/${mdName}`)) !== null && (await readOpfs(`.pinproof/${mdName}`)) === null, '보관: archive/로 이동');
+  check((await readOpfs('.pinproof/archive/assets/001/')) === 'A.png,B.png,C.png,D.png,F.png', '보관: 스크린샷도 이동');
 
   // ---------- 기록 삭제 ----------
   panel.on('dialog', (d) => d.accept());
   await panel.getByRole('button', { name: '보관함 보기' }).click();
   await panel.locator('.rec-actions').getByRole('button', { name: '삭제' }).click();
   await panel.waitForTimeout(500);
-  check((await readOpfs(`.bugnotes/archive/${mdName}`)) === null && (await readOpfs('.bugnotes/archive/assets/001/')) === null, '보관함의 기록 삭제: md·스크린샷 삭제');
+  check((await readOpfs(`.pinproof/archive/${mdName}`)) === null && (await readOpfs('.pinproof/archive/assets/001/')) === null, '보관함의 기록 삭제: md·스크린샷 삭제');
   await panel.getByRole('button', { name: '기록 보기' }).click();
 
   await panel.getByRole('button', { name: '+ 새 기록' }).click();
@@ -320,12 +320,48 @@ try {
   const letters = await panel.locator('.draft .ev .letter').allTextContents();
   check(letters.join(',') === 'A' && (await panel.locator('.draft .ev .target-sel').first().textContent()).startsWith('#node-table'), `증거 삭제 후 문자 다시 매기기: ${letters.join(',')}`);
   await panel.waitForTimeout(1000);
-  const before = await readOpfs('.bugnotes/');
+  const before = await readOpfs('.pinproof/');
   await panel.getByRole('button', { name: '기록 삭제' }).click();
   await panel.waitForTimeout(500);
-  const after = await readOpfs('.bugnotes/');
+  const after = await readOpfs('.pinproof/');
   check(/지울-기록\.md/.test(before) && !/지울-기록\.md/.test(after), '작성 중인 기록 삭제');
   check(await panel.getByRole('button', { name: '+ 새 기록' }).isVisible(), '삭제 후 작성 중 상태 해제');
+
+  // ---------- 이전 이름(.bugnotes/) → .pinproof/ 옮기기 ----------
+  await panel.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const write = async (dir, name, text) => {
+      const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await w.write(text);
+      await w.close();
+    };
+    await root.getDirectoryHandle('.git', { create: true });
+    const legacy = await root.getDirectoryHandle('.bugnotes', { create: true });
+    await write(legacy, 'WORKFLOW.md', '# 옛 절차 (.bugnotes)');
+    await write(legacy, '077-옛-기록.md', '---\nid: 77\ntitle: "옛 기록"\ntype: 버그\nevidence: 1\n---\n\n## 처리 기록\n- 옛 처리\n');
+    const a = await (await legacy.getDirectoryHandle('assets', { create: true })).getDirectoryHandle('077', { create: true });
+    await write(a, 'A.png', 'png');
+    const cmds = await (await root.getDirectoryHandle('.claude', { create: true })).getDirectoryHandle('commands', { create: true });
+    await write(cmds, 'bugnotes.md', '`.bugnotes/WORKFLOW.md`를 읽고 그 절차를 그대로 따른다.');
+    await write(root, '.gitignore', 'node_modules\n\n# BugNotes\n.bugnotes/\n.claude/commands/bugnotes.md\n');
+  });
+  await panel.getByRole('button', { name: '옮기기' }).waitFor({ timeout: 8000 });
+  await panel.getByRole('button', { name: '옮기기' }).click(); // 확인 창은 위에서 등록한 dialog 핸들러가 수락
+  await panel.waitForTimeout(800);
+  const migrated = {
+    record: await readOpfs('.pinproof/077-옛-기록.md'),
+    asset: await readOpfs('.pinproof/assets/077/'),
+    legacy: await readOpfs('.bugnotes/'),
+    workflow: await readOpfs('.pinproof/WORKFLOW.md'),
+    oldCmd: await readOpfs('.claude/commands/bugnotes.md'),
+    newCmd: await readOpfs('.claude/commands/pinproof.md'),
+    gitignore: await readOpfs('.gitignore'),
+  };
+  check(migrated.record?.includes('- 옛 처리') && migrated.asset === 'A.png', '옮기기: 기록·처리 기록·스크린샷 이동');
+  check(migrated.legacy === null && migrated.oldCmd === null && !!migrated.newCmd, '옮기기: .bugnotes/ 와 /bugnotes 커맨드 정리');
+  check(!migrated.workflow.includes('옛 절차'), '옮기기: WORKFLOW.md는 새 버전 유지');
+  check(!migrated.gitignore.includes('.bugnotes/') && migrated.gitignore.includes('.pinproof/'), `옮기기: .gitignore 교체`);
+  check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 목록에 표시');
 
   // ---------- React 19 어댑터 (heureum) ----------
   if (heureumUrl) {
@@ -335,16 +371,16 @@ try {
     const info = await app.evaluate(async () => {
       // 가장 깊은 곳의 텍스트 요소 하나를 고른다
       const el = [...document.querySelectorAll('#root *')].find((e) => e.childElementCount === 0 && e.textContent.trim().length > 1);
-      el.setAttribute('data-bugnotes-target', 'probe');
+      el.setAttribute('data-pinproof-target', 'probe');
       return await new Promise((resolve) => {
         const id = 'probe-req';
         window.addEventListener('message', function on(ev) {
-          if (ev.data?.key === '__bugnotes_bridge__' && ev.data.dir === 'res' && ev.data.id === id) {
+          if (ev.data?.key === '__pinproof_bridge__' && ev.data.dir === 'res' && ev.data.id === id) {
             window.removeEventListener('message', on);
             resolve({ tag: el.tagName, text: el.textContent.trim().slice(0, 30), data: ev.data.data });
           }
         });
-        window.postMessage({ key: '__bugnotes_bridge__', dir: 'req', id, op: 'component', target: 'probe' }, location.origin);
+        window.postMessage({ key: '__pinproof_bridge__', dir: 'req', id, op: 'component', target: 'probe' }, location.origin);
       });
     });
     console.log('heureum 감지 결과:', JSON.stringify(info));

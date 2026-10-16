@@ -184,7 +184,7 @@ class Picker {
 
   // ---------- UI ----------
   private mountUi() {
-    this.host = document.createElement('bugnotes-overlay');
+    this.host = document.createElement('pinproof-overlay');
     this.host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.innerHTML = `
@@ -457,7 +457,7 @@ class Picker {
     if (!res?.dataUrl) {
       if (res?.error && /activeTab|all_urls/.test(res.error) && !this.screenshotWarned) {
         this.screenshotWarned = true;
-        this.pendingWarning = '스크린샷 없이 담았습니다. 툴바의 BugNotes 아이콘(Alt+Shift+B)을 한 번 누르면 이 탭에서 스크린샷이 켜집니다.';
+        this.pendingWarning = '스크린샷 없이 담았습니다. 툴바의 PinProof 아이콘(Alt+Shift+B)을 한 번 누르면 이 탭에서 스크린샷이 켜집니다.';
       }
       return undefined;
     }
@@ -493,7 +493,7 @@ class Picker {
         this.pendingWarning = null;
       }
     } catch {
-      this.toast('BugNotes 사이드 패널을 먼저 열어주세요', 'warn');
+      this.toast('PinProof 사이드 패널을 먼저 열어주세요', 'warn');
     }
   }
 

@@ -1,4 +1,6 @@
-# BugNotes — 화면 버그 기록 → Claude 전달 크롬 익스텐션
+# PinProof (구 BugNotes) — 화면 버그 기록 → Claude 전달 크롬 익스텐션
+
+> 2026-10-16 이름 변경: BugNotes → **PinProof**. 데이터 폴더 `.bugnotes/` → `.pinproof/`, 커맨드 `/bugnotes` → `/pinproof`. 아래 본문의 옛 이름은 당시 기록이라 그대로 둠.
 
 ## Context
 - 개발 중인 웹(프레임워크 무관, localhost)에서 화면 버그·데이터 정합성 문제를 찾을 때, 지금은 메모장에 자유 텍스트로 적어 Claude Code에 붙여넣음.
@@ -182,3 +184,4 @@
 - **붙여넣기 증거(kind: paste)**: 작성 중 카드의 붙여넣기 칸 ⌘V / 끌어다 놓기 / 패널 전역 ⌘V. 이미지는 폭 1600px 이하 PNG로 `assets/<id>/<문자>.png`, 텍스트는 5000자까지 코드 블록. clipboardRead 권한 없이 paste 이벤트만 사용.
 - **#002 리허설(맥락 없는 에이전트) 결과 반영**: 영역 안에 보이던 글자 기록(`regionTexts`, 비밀번호 칸은 값 없이 표시), WORKFLOW 재처리 규칙(`### <일시> (재처리)`), frontmatter `updated:`, 증거 삭제·이동 시 A부터 다시 매기기, 메모 안내문 `현상/기대/제약`, WORKFLOW에 "기대가 판단 기준, 없으면 문서에서 찾고 어긋나면 사용자에게 묻기".
 - **WORKFLOW 버전 관리 (사용자 선택: 갱신 버튼)**: WORKFLOW.md 첫 줄 `<!-- bugnotes-workflow vN -->`. 프로젝트 파일 버전이 낮으면 패널에 [업데이트] 버튼, 눌러야만 교체(확인 창). 폴더 재연결 시에도 기존 WORKFLOW.md는 덮어쓰지 않음. 프로젝트별 규칙은 `WORKFLOW.local.md`(익스텐션 불간섭).
+- **이름 변경 BugNotes → PinProof (사용자 요청)**: 표시명·package·README·코드 식별자·데이터 폴더 `.pinproof/`·커맨드 `/pinproof`·WORKFLOW 마커 `pinproof-workflow`. 기존 `.bugnotes/`는 폴더 연결 시(확인 목록에 표시) 또는 패널 배너 [옮기기]로 `.pinproof/`에 복사(덮어쓰지 않음, 번호 겹치는 기록은 남기고 알림) → 모두 옮기면 `.bugnotes/`·옛 커맨드 삭제, `.gitignore` 블록 교체. manifest `key`로 확장 ID 고정(`cjhefepniacmcgnhmfheajiiehbbiclo`) — 폴더를 옮겨도 연결·작성 중 기록 유지. 웹스토어 업로드 시 key 제거 필요. 프로젝트 폴더 `~/Documents/Project/bugnotes` → `~/Documents/Project/pinproof`.

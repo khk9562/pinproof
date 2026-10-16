@@ -9,7 +9,7 @@ document.getElementById('pick')!.addEventListener('click', async () => {
   try {
     const root = await (window as unknown as { showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({
       mode: 'readwrite',
-      id: 'bugnotes-project',
+      id: 'pinproof-project',
     });
     const ok = await connectFolder(origin, root, (items, folder) =>
       window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),

@@ -7,7 +7,7 @@ import { BugRecord, Evidence } from './types';
  * - inbox: 미분류 증거. 키 = uid, origin 필드로 앱 구분
  * - state: 앱별 작성 중인 건 id 등
  */
-const DB_NAME = 'bugnotes';
+const DB_NAME = 'pinproof';
 const VERSION = 1;
 
 function open(): Promise<IDBDatabase> {

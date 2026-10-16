@@ -1,17 +1,17 @@
 /** WORKFLOW.md 내용이 바뀌면 올린다. 파일 첫 줄의 버전과 비교해 갱신 여부를 정한다 */
 export const WORKFLOW_VERSION = 2;
-export const WORKFLOW_MARKER = (v: number) => `<!-- bugnotes-workflow v${v} -->`;
+export const WORKFLOW_MARKER = (v: number) => `<!-- pinproof-workflow v${v} -->`;
 
 export const WORKFLOW_MD = `${WORKFLOW_MARKER(WORKFLOW_VERSION)}
-# BugNotes 처리 절차
+# PinProof 처리 절차
 
-이 폴더(\`.bugnotes/\`)에는 사용자가 브라우저 화면에서 직접 모은 버그·수정 요청·확인 요청이 "기록 건" 단위로 쌓입니다.
+이 폴더(\`.pinproof/\`)에는 사용자가 브라우저 화면에서 직접 모은 버그·수정 요청·확인 요청이 "기록 건" 단위로 쌓입니다.
 기록 건 1개 = md 파일 1개(\`012-제목.md\`), 스크린샷은 \`assets/012/\`에 있습니다. \`archive/\`는 사용자가 끝났다고 보관한 건이므로 따로 지시가 없으면 보지 않습니다.
 
-프로젝트별 추가 규칙이 \`.bugnotes/WORKFLOW.local.md\`에 있으면 그 내용도 함께 따릅니다(이 파일과 충돌하면 local이 우선).
+프로젝트별 추가 규칙이 \`.pinproof/WORKFLOW.local.md\`에 있으면 그 내용도 함께 따릅니다(이 파일과 충돌하면 local이 우선).
 
 ## 인자가 없을 때: 목록
-\`.bugnotes/*.md\`(WORKFLOW.md, archive/ 제외)의 frontmatter를 읽어 아래 형식으로만 보여주고 멈춥니다.
+\`.pinproof/*.md\`(WORKFLOW.md, archive/ 제외)의 frontmatter를 읽어 아래 형식으로만 보여주고 멈춥니다.
 
 \`\`\`
 #012 대시보드 총합 불일치 · 버그 · 증거 3
@@ -19,7 +19,7 @@ export const WORKFLOW_MD = `${WORKFLOW_MARKER(WORKFLOW_VERSION)}
 \`\`\`
 
 ## 번호가 주어졌을 때: 그 건 처리
-1. \`.bugnotes/<번호 3자리>-*.md\`를 끝까지 읽습니다. 메모는 사용자가 자유롭게 쓴 글이라 현상·기대·추정·제약이 섞여 있을 수 있습니다. 제약(예: "로컬 기준으로만")은 반드시 지킵니다.
+1. \`.pinproof/<번호 3자리>-*.md\`를 끝까지 읽습니다. 메모는 사용자가 자유롭게 쓴 글이라 현상·기대·추정·제약이 섞여 있을 수 있습니다. 제약(예: "로컬 기준으로만")은 반드시 지킵니다.
    - 이미 \`## 처리 기록\`이 있으면 **재처리**입니다. 이전 기록을 먼저 읽고, frontmatter의 \`updated\`가 마지막 처리 일시보다 늦으면 그 사이 메모·증거가 바뀐 것이니 바뀐 부분을 중심으로 다시 확인합니다. 이전 결론을 그대로 반복하지 말고, 새로 확인한 것과 달라진 결론만 적습니다.
 2. 증거마다 연결된 스크린샷·이미지를 열어 사용자가 본 화면을 확인합니다. \`붙여넣기\` 증거는 사용자가 다른 곳(메신저, 메일, 로그 등)에서 가져온 자료입니다. 영역 증거의 "영역 안에 보이던 글자"로 어떤 화면이었는지 특정할 수 있습니다.
 3. 코드 위치를 찾습니다.
@@ -50,26 +50,34 @@ export const WORKFLOW_MD = `${WORKFLOW_MARKER(WORKFLOW_VERSION)}
 
 /** WORKFLOW.md 첫 줄의 버전. 표시가 없으면 버전 표시 이전(v1)으로 본다 */
 export function workflowVersionOf(text: string): number {
-  const m = text.match(/^<!-- bugnotes-workflow v(\d+) -->/);
+  const m = text.match(/^<!-- pinproof-workflow v(\d+) -->/);
   return m ? Number(m[1]) : 1;
 }
 
 export const COMMAND_MD = `---
-description: BugNotes 기록 건 목록 보기(인자 없음) 또는 처리(번호)
+description: PinProof 기록 건 목록 보기(인자 없음) 또는 처리(번호)
 argument-hint: "[기록 번호]"
 ---
 
-\`.bugnotes/WORKFLOW.md\`를 읽고 그 절차를 그대로 따른다.
+\`.pinproof/WORKFLOW.md\`를 읽고 그 절차를 그대로 따른다.
 
 인자: $ARGUMENTS
 `;
 
-export const GITIGNORE_MARKER = '# BugNotes';
+export const GITIGNORE_MARKER = '# PinProof';
 
 export const GITIGNORE_BLOCK = `${GITIGNORE_MARKER}
-.bugnotes/
-.claude/commands/bugnotes.md
+.pinproof/
+.claude/commands/pinproof.md
 `;
+
+/** 이전 이름(BugNotes) 시절 .gitignore 블록의 줄들. 옮길 때 지운다 */
+export const LEGACY_GITIGNORE_LINES = ['# BugNotes', '.bugnotes/', '.claude/commands/bugnotes.md'];
+
+export function removeLegacyGitignore(existing: string): string {
+  const lines = existing.split('\n').filter((l) => !LEGACY_GITIGNORE_LINES.includes(l.trim()));
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
 
 export function appendGitignore(existing: string | null): string | null {
   if (existing?.includes(GITIGNORE_MARKER)) return null;

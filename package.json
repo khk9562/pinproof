@@ -1,5 +1,5 @@
 {
-  "name": "bugnotes",
+  "name": "pinproof",
   "description": "화면에서 찾은 버그·정합성 문제를 증거와 함께 기록해 프로젝트 폴더에 쌓고, Claude Code가 건별로 처리하게 하는 크롬 익스텐션",
   "private": true,
   "version": "0.1.0",
@@ -10,7 +10,7 @@
     "zip": "wxt zip",
     "compile": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "BUGNOTES_E2E=1 wxt build && node tests/e2e/run.mjs",
+    "test:e2e": "PINPROOF_E2E=1 wxt build && node tests/e2e/run.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

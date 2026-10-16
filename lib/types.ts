@@ -93,7 +93,7 @@ export interface BugRecord {
   evidence: Evidence[];
 }
 
-/** .bugnotes/ 폴더를 읽어 얻는 목록용 요약 */
+/** .pinproof/ 폴더를 읽어 얻는 목록용 요약 */
 export interface RecordSummary {
   id: number;
   title: string;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { connectFolder, isSupportedUrl, routeOf } from '@/lib/connect';
 import * as db from '@/lib/db';
-import { archiveRecord, deleteRecord, ensurePermission, listRecords, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
+import { archiveRecord, deleteRecord, ensurePermission, hasLegacy, listRecords, migrateLegacy, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
 import type { WorkflowStatus } from '@/lib/fs';
 import { copyPrompt, letterFor, padId, recordFileName, sameTarget } from '@/lib/markdown';
 import { NetworkSnapshot, PickMode, ToContent, ToPanel } from '@/lib/messages';
@@ -37,7 +37,7 @@ function nextLetter(evidence: Evidence[]): string {
   return letterFor(max + 1);
 }
 
-export function useBugNotes() {
+export function usePinProof() {
   const [tabId, setTabId] = useState<number | null>(FIXED_TAB);
   const [tabUrl, setTabUrl] = useState<string>('');
   const [connection, setConnection] = useState<Connection>('none');
@@ -51,6 +51,8 @@ export function useBugNotes() {
   const [freshUid, setFreshUid] = useState<string | null>(null);
   /** 프로젝트의 WORKFLOW.md가 옛 버전이면 [업데이트] 버튼을 보여준다 */
   const [workflow, setWorkflow] = useState<WorkflowStatus | null>(null);
+  /** 이전 이름(BugNotes)의 .bugnotes/ 폴더가 남아 있으면 [옮기기] 버튼을 보여준다 */
+  const [legacy, setLegacy] = useState(false);
 
   const origin = isSupportedUrl(tabUrl) ? new URL(tabUrl).origin : null;
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
@@ -112,6 +114,7 @@ export function useBugNotes() {
     try {
       setRecords(await listRecords(h));
       setWorkflow(await workflowStatus(h));
+      setLegacy(await hasLegacy(h));
     } catch (e) {
       say(`기록 목록을 읽지 못했습니다: ${String(e)}`, 'warn');
     }
@@ -120,6 +123,7 @@ export function useBugNotes() {
   const loadOrigin = useCallback(async () => {
     handleRef.current = null;
     setWorkflow(null);
+    setLegacy(false);
     setConnection('none');
     setFolderName('');
     setDraft(null);
@@ -244,7 +248,7 @@ export function useBugNotes() {
         ? await navigator.storage.getDirectory()
         : await (window as unknown as { showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({
             mode: 'readwrite',
-            id: 'bugnotes-project',
+            id: 'pinproof-project',
           });
     } catch (e) {
       const name = (e as DOMException).name;
@@ -276,7 +280,7 @@ export function useBugNotes() {
     const h = handleRef.current;
     if (!h || !workflow) return;
     const ok = window.confirm(
-      `.bugnotes/WORKFLOW.md 를 v${workflow.current} → v${workflow.latest} 로 교체합니다.\n\n이 파일을 직접 고친 적이 있다면 그 내용은 사라집니다. 프로젝트별 규칙은 .bugnotes/WORKFLOW.local.md 에 따로 적어두세요(익스텐션이 건드리지 않습니다).\n\n계속할까요?`,
+      `.pinproof/WORKFLOW.md 를 v${workflow.current} → v${workflow.latest} 로 교체합니다.\n\n이 파일을 직접 고친 적이 있다면 그 내용은 사라집니다. 프로젝트별 규칙은 .pinproof/WORKFLOW.local.md 에 따로 적어두세요(익스텐션이 건드리지 않습니다).\n\n계속할까요?`,
     );
     if (!ok) return;
     try {
@@ -287,6 +291,23 @@ export function useBugNotes() {
       say(`업데이트 실패: ${String(e)}`, 'warn');
     }
   }, [workflow, say]);
+
+  const moveLegacy = useCallback(async () => {
+    const h = handleRef.current;
+    if (!h) return;
+    const ok = window.confirm(
+      '이전 이름(BugNotes)의 .bugnotes/ 폴더를 .pinproof/ 로 옮깁니다.\n\n- 기록·스크린샷·보관함 복사 (이미 있는 파일은 덮어쓰지 않음)\n- 모두 옮기면 .bugnotes/ 와 이전 커맨드 /bugnotes 삭제, .gitignore 줄 교체\n\n계속할까요?',
+    );
+    if (!ok) return;
+    try {
+      const { skipped } = await migrateLegacy(h);
+      await refreshRecords();
+      if (skipped.length) say(`번호가 겹치는 기록(${skipped.map((n) => `#${padId(n)}`).join(', ')})은 옮기지 않았습니다. .bugnotes/ 에 남아 있습니다.`, 'warn');
+      else say('.bugnotes/ 를 .pinproof/ 로 옮겼습니다. 커맨드는 이제 /pinproof 입니다.');
+    } catch (e) {
+      say(`옮기기 실패: ${String(e)}`, 'warn');
+    }
+  }, [refreshRecords, say]);
 
   const disconnect = useCallback(async () => {
     if (!origin) return;
@@ -579,6 +600,8 @@ export function useBugNotes() {
     freshUid,
     workflow,
     upgradeWorkflow,
+    legacy,
+    moveLegacy,
     connect,
     reconnect,
     disconnect,
@@ -602,4 +625,4 @@ export function useBugNotes() {
   };
 }
 
-export type BugNotes = ReturnType<typeof useBugNotes>;
+export type PinProof = ReturnType<typeof usePinProof>;

@@ -148,8 +148,8 @@ describe('파일명·문자·프롬프트', () => {
   });
 
   it('복사 프롬프트는 WORKFLOW와 파일 경로를 가리킨다', () => {
-    expect(copyPrompt('012-x.md')).toBe('`.bugnotes/WORKFLOW.md` 절차대로 `.bugnotes/012-x.md` 기록 건을 처리해줘.');
-    expect(copyPrompt('012-x.md', true)).toContain('.bugnotes/archive/012-x.md');
+    expect(copyPrompt('012-x.md')).toBe('`.pinproof/WORKFLOW.md` 절차대로 `.pinproof/012-x.md` 기록 건을 처리해줘.');
+    expect(copyPrompt('012-x.md', true)).toContain('.pinproof/archive/012-x.md');
   });
 });
 

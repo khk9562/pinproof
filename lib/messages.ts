@@ -27,9 +27,9 @@ export type ToPanel =
 export type ToBackground = { type: 'bn:screenshot' };
 
 /** isolated world ↔ MAIN world (window.postMessage) */
-export const BRIDGE_KEY = '__bugnotes_bridge__';
+export const BRIDGE_KEY = '__pinproof_bridge__';
 export type BridgeRequest =
   | { key: typeof BRIDGE_KEY; dir: 'req'; id: string; op: 'component'; target: string }
   | { key: typeof BRIDGE_KEY; dir: 'req'; id: string; op: 'network'; route: string };
 export type BridgeResponse = { key: typeof BRIDGE_KEY; dir: 'res'; id: string; data: unknown };
-export const TARGET_ATTR = 'data-bugnotes-target';
+export const TARGET_ATTR = 'data-pinproof-target';
