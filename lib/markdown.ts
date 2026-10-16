@@ -1,0 +1,256 @@
+import { BugRecord, Evidence, KIND_LABEL, RecordSummary } from './types';
+
+/** Claude가 처리 후 덧붙이는 섹션. 이 줄부터 끝까지는 익스텐션이 절대 덮어쓰지 않는다. */
+export const RESULT_HEADING = '## 처리 기록';
+
+export function padId(id: number): string {
+  return String(id).padStart(3, '0');
+}
+
+export function slugify(title: string): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[\\/:*?"<>|#%&{}$!'`@^+=~,;.\[\]()]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug.slice(0, 40) || '제목-없음';
+}
+
+export function recordFileName(record: Pick<BugRecord, 'id' | 'title'>): string {
+  return `${padId(record.id)}-${slugify(record.title)}.md`;
+}
+
+export function assetPath(id: number, letter: string): string {
+  return `assets/${padId(id)}/${letter}.png`;
+}
+
+export function letterFor(index: number): string {
+  let n = index;
+  let s = '';
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function fence(content: string, lang = ''): string {
+  // 내용에 ``` 가 있어도 깨지지 않도록 더 긴 펜스를 쓴다
+  const longest = Math.max(2, ...[...content.matchAll(/`+/g)].map((m) => m[0].length));
+  const ticks = '`'.repeat(longest + 1);
+  return `${ticks}${lang}\n${content}\n${ticks}`;
+}
+
+function inlineCode(value: string): string {
+  const ticks = value.includes('`') ? '``' : '`';
+  const pad = value.startsWith('`') || value.endsWith('`') ? ' ' : '';
+  return `${ticks}${pad}${value}${pad}${ticks}`;
+}
+
+function quoteText(value: string): string {
+  return `"${value.replace(/\s+/g, ' ').trim()}"`;
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+/** 같은 기록에 같은 대상을 두 번 담지 않기 위한 비교: 같은 route의 같은 요소, 텍스트는 같은 문구까지 */
+export function sameTarget(a: Evidence, b: Evidence): boolean {
+  if (a.route !== b.route || !a.selector || a.selector !== b.selector) return false;
+  const kindOf = (e: Evidence) => (e.kind === 'container' ? 'element' : e.kind);
+  if (kindOf(a) !== kindOf(b)) return false;
+  if (a.kind === 'text') return a.quote?.exact === b.quote?.exact;
+  return a.kind === 'element' || a.kind === 'container';
+}
+
+/** 화면 표시용 페이지 경로: pathname + query + hash */
+export function pagePath(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return url;
+  }
+}
+
+/** React Grab 형식의 한 줄 참조: <td> in NodeRow › NodeListTable (src/x.tsx:42) */
+export function referenceLine(e: Evidence): string | undefined {
+  if (!e.tag) return undefined;
+  let line = `<${e.tag}>`;
+  if (e.component && e.component.chain.length > 0) {
+    line += ` in ${e.component.chain.slice(0, 3).join(' › ')}`;
+  }
+  if (e.component?.source) {
+    line += ` (${e.component.source}${e.component.sourceApprox ? ' 근처' : ''})`;
+  }
+  return line;
+}
+
+function evidenceSection(record: BugRecord, e: Evidence): string {
+  const lines: string[] = [];
+  lines.push(`### ${e.letter}. ${KIND_LABEL[e.kind]} — ${e.route}`);
+  lines.push(`- URL: ${e.url}`);
+  if (e.pageTitle) lines.push(`- 페이지 제목: ${e.pageTitle}`);
+  if (e.note.trim()) lines.push(`- 메모: ${e.note.trim()}`);
+
+  if (e.kind === 'paste') {
+    lines.push('- 사용자가 클립보드에서 붙여넣은 자료 (붙여넣을 때 열려 있던 페이지 기준 URL)');
+    if (e.screenshot) lines.push(`- 이미지: ![${e.letter}](${assetPath(record.id, e.letter!)})`);
+    if (e.pastedText) {
+      lines.push('');
+      lines.push(fence(e.pastedText));
+    }
+    return lines.join('\n');
+  }
+
+  if (e.kind === 'network') {
+    const reqs = e.requests ?? [];
+    lines.push(`- 호출 ${reqs.length}건 (요청 헤더·쿠키는 기록하지 않음, 응답은 앞부분만)`);
+    lines.push('');
+    reqs.forEach((r, i) => {
+      lines.push(
+        `${i + 1}. ${inlineCode(`${r.method} ${r.url}`)} → ${r.status || '실패'} · ${r.durationMs}ms · ${formatSize(r.size)}`,
+      );
+      if (r.bodyPreview) {
+        const body = fence(r.bodyPreview, r.bodyPreview.trim().startsWith('{') || r.bodyPreview.trim().startsWith('[') ? 'json' : '');
+        lines.push(body.split('\n').map((l) => `   ${l}`).join('\n'));
+      }
+    });
+    return lines.join('\n');
+  }
+
+  const ref = referenceLine(e);
+  if (ref) lines.push(`- 참조: ${inlineCode(ref)}`);
+  if (e.component && !e.component.source && e.component.chain.length > 0) {
+    lines.push(`- 컴포넌트: ${e.component.chain.join(' ← ')} (${e.component.framework})`);
+  }
+  if (e.selector) lines.push(`- selector: ${inlineCode(e.selector)}`);
+
+  if (e.kind === 'text' && e.quote) {
+    lines.push(`- 선택한 텍스트: ${quoteText(e.quote.exact)}`);
+    lines.push(`- 앞뒤 문맥: …${e.quote.prefix.replace(/\s+/g, ' ')}【${e.quote.exact.replace(/\s+/g, ' ')}】${e.quote.suffix.replace(/\s+/g, ' ')}…`);
+  } else if (e.text !== undefined && e.kind !== 'region') {
+    lines.push(`- 텍스트: ${e.text ? quoteText(e.text) : '(없음)'}`);
+  }
+
+  if (e.table) {
+    if (e.table.headers.length) lines.push(`- 헤더: ${e.table.headers.join(' | ')}`);
+    lines.push(`- 화면에 보이는 행: ${e.table.visibleRows}`);
+  }
+
+  if (e.kind === 'region' && e.rect) {
+    const r = e.rect;
+    lines.push(`- 영역: x=${r.x}, y=${r.y}, ${r.width}×${r.height} (viewport 기준)`);
+    if (e.regionTexts?.length) {
+      lines.push(`- 영역 안에 보이던 글자: ${e.regionTexts.map((t) => quoteText(t)).join(' · ')}`);
+    }
+    if (e.children?.length) {
+      lines.push(`- 영역 안 요소 ${e.children.length}개:`);
+      for (const c of e.children) {
+        lines.push(`  - ${inlineCode(c.selector)} <${c.tag}>${c.text ? ` ${quoteText(c.text)}` : ''}`);
+      }
+    }
+  }
+
+  lines.push(`- 화면 폭: ${e.viewportWidth}px`);
+  if (e.screenshot) lines.push(`- 스크린샷: ![${e.letter}](${assetPath(record.id, e.letter!)})`);
+  if (e.html) {
+    lines.push('');
+    lines.push(fence(e.html, 'html'));
+  }
+  return lines.join('\n');
+}
+
+/** 익스텐션이 소유하는 본문(처리 기록 이전까지)을 만든다 */
+export function renderRecord(record: BugRecord): string {
+  const out: string[] = [];
+  out.push('---');
+  out.push(`id: ${record.id}`);
+  out.push(`title: ${yamlString(record.title)}`);
+  out.push(`type: ${record.type}`);
+  out.push(`related: ${yamlString(record.related)}`);
+  out.push(`created: ${record.created}`);
+  if (record.updated) out.push(`updated: ${record.updated}`);
+  out.push(`app: ${record.app}`);
+  out.push(`evidence: ${record.evidence.length}`);
+  out.push('---');
+  out.push('');
+  out.push(`# #${padId(record.id)} ${record.title || '(제목 없음)'}`);
+  out.push('');
+  out.push('## 메모');
+  out.push(record.memo.trim() || '(메모 없음)');
+  out.push('');
+  out.push('## 증거');
+  if (record.evidence.length === 0) {
+    out.push('(아직 없음)');
+  }
+  for (const e of record.evidence) {
+    out.push('');
+    out.push(evidenceSection(record, e));
+  }
+  out.push('');
+  return out.join('\n');
+}
+
+/** 기존 파일 내용에서 처리 기록 섹션(있으면)을 보존한 채 본문을 교체한다 */
+export function mergeWithExisting(rendered: string, existing: string | null): string {
+  if (!existing) return rendered;
+  const idx = findResultHeading(existing);
+  if (idx === -1) return rendered;
+  return `${rendered.trimEnd()}\n\n${existing.slice(idx)}`;
+}
+
+function findResultHeading(text: string): number {
+  if (text.startsWith(RESULT_HEADING)) return 0;
+  const idx = text.indexOf(`\n${RESULT_HEADING}`);
+  return idx === -1 ? -1 : idx + 1;
+}
+
+/** 목록 표시용으로 frontmatter만 읽는다 */
+export function parseSummary(text: string, fileName: string, archived: boolean): RecordSummary | null {
+  const m = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!m) return null;
+  const fields: Record<string, string> = {};
+  for (const line of m[1].split('\n')) {
+    const i = line.indexOf(':');
+    if (i === -1) continue;
+    fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  const id = Number(fields.id);
+  if (!Number.isFinite(id)) return null;
+  let title = fields.title ?? '';
+  try {
+    title = JSON.parse(title);
+  } catch {
+    /* 사람이 직접 고친 경우 따옴표 없이도 허용 */
+  }
+  return {
+    id,
+    title,
+    type: fields.type ?? '',
+    evidenceCount: Number(fields.evidence) || 0,
+    created: fields.created ?? '',
+    fileName,
+    archived,
+    hasResult: findResultHeading(text) !== -1,
+  };
+}
+
+export function idFromFileName(name: string): number | null {
+  const m = name.match(/^(\d{3,})-.*\.md$/);
+  return m ? Number(m[1]) : null;
+}
+
+export function copyPrompt(fileName: string, archived = false): string {
+  const path = archived ? `.bugnotes/archive/${fileName}` : `.bugnotes/${fileName}`;
+  return `\`.bugnotes/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.`;
+}

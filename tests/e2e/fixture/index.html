@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture Dashboard</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; }
+      .x1a2b3c { display: flex; gap: 12px; }
+      .x9z8y7w { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; min-width: 140px; }
+      table { border-collapse: collapse; margin-top: 16px; }
+      td, th { border: 1px solid #ddd; padding: 4px 10px; }
+      .help { margin-top: 16px; color: #555; }
+    </style>
+  </head>
+  <body>
+    <h1>대시보드</h1>
+    <nav><a href="/nodes" id="to-nodes">노드 목록</a></nav>
+    <div class="x1a2b3c">
+      <div class="x9z8y7w"><div>총 CPU 합계</div><strong data-testid="summary-total">10</strong></div>
+      <div class="x9z8y7w"><div>노드 수</div><strong>3</strong></div>
+    </div>
+    <p class="help" id="help">미설치 VM 목록 조회에 실패했습니다. 권한을 확인하세요.</p>
+    <div id="list"></div>
+    <script>
+      const route = location.pathname;
+      fetch('/api/nodes')
+        .then((r) => r.json())
+        .then((data) => {
+          if (route !== '/nodes') return;
+          document.querySelector('h1').textContent = '노드 목록';
+          const rows = data.items.map((n) => `<tr><td>${n.name}</td><td>${n.cpu}</td></tr>`).join('');
+          document.getElementById('list').innerHTML = `<table id="node-table"><thead><tr><th>이름</th><th>CPU</th></tr></thead><tbody>${rows}</tbody></table>`;
+        });
+      fetch('/api/forbidden').catch(() => {});
+    </script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>BugNotes · 폴더 연결</title>
+    <style>
+      body { font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; max-width: 520px; margin: 64px auto; padding: 0 16px; color: #1f2328; }
+      button { padding: 8px 16px; border-radius: 6px; border: 0; background: #2563eb; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+      code { font-family: ui-monospace, Menlo, monospace; }
+      #status { margin-top: 16px; color: #57606a; }
+      @media (prefers-color-scheme: dark) { body { background: #111318; color: #e6e8eb; } #status { color: #a4acb7; } }
+    </style>
+  </head>
+  <body>
+    <h2>프로젝트 폴더 연결</h2>
+    <p><code id="origin"></code> 앱의 기록을 저장할 프로젝트 폴더를 고르세요.</p>
+    <button id="pick">폴더 선택</button>
+    <p id="status"></p>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
