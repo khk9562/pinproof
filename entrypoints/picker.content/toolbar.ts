@@ -17,9 +17,11 @@ export interface ToolbarHandlers {
 
 type Pos = { right: number; top: number };
 const EDGE = 8;
+/** 드래그한 적이 없을 때 기본 위치: 화면 아래 가운데, 아래에서 이만큼 */
+const BOTTOM_GAP = 24;
 
 /**
- * 페이지 오른쪽 위에 뜨는 플로팅 툴바. 사이드 패널이 열려 있을 때만 보인다.
+ * 페이지 아래 가운데에 뜨는 플로팅 툴바. 사이드 패널이 열려 있을 때만 보인다.
  * 잡아 끌어 옮길 수 있고 위치는 앱(origin)별로 기억한다. 모드에 들어가면 안내 띠로 바뀐다.
  */
 export class Toolbar {
@@ -30,7 +32,8 @@ export class Toolbar {
   private rec: HTMLElement;
   private logo: HTMLElement;
   private eye: HTMLButtonElement;
-  private pos: Pos = { right: 24, top: 24 };
+  /** 드래그해서 옮긴 위치. 없으면 아래 가운데(기본) */
+  private pos: Pos | null = null;
   private readonly key = `toolbarPos:${location.origin}`;
   private count: number | null = null;
   private hideTimer: number | undefined;
@@ -166,18 +169,24 @@ export class Toolbar {
 
   // ---------- 위치 ----------
   private place() {
+    const s = this.el.style;
+    if (!this.pos) {
+      // 기본: 아래 가운데. translate 로 가운데를 잡아 모드 전환으로 폭이 바뀌어도 가운데를 지킨다
+      Object.assign(s, { left: '50%', right: 'auto', top: 'auto', bottom: `${BOTTOM_GAP}px`, translate: '-50% 0' });
+      return;
+    }
     const w = this.el.offsetWidth || 400;
     const h = this.el.offsetHeight || 40;
     const right = Math.min(Math.max(EDGE, this.pos.right), Math.max(EDGE, innerWidth - w - EDGE));
     const top = Math.min(Math.max(EDGE, this.pos.top), Math.max(EDGE, innerHeight - h - EDGE));
-    this.el.style.right = `${right}px`;
-    this.el.style.top = `${top}px`;
+    Object.assign(s, { left: 'auto', bottom: 'auto', translate: 'none', right: `${right}px`, top: `${top}px` });
   }
 
   private onDragStart = (e: MouseEvent) => {
     if (e.button !== 0 || (e.target as Element).closest('button')) return;
     e.preventDefault();
-    const start = { x: e.clientX, y: e.clientY, right: parseFloat(this.el.style.right), top: parseFloat(this.el.style.top) };
+    const r = this.el.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY, right: innerWidth - r.right, top: r.top };
     let moved = false;
     const move = (ev: MouseEvent) => {
       const dx = ev.clientX - start.x;

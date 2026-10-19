@@ -156,6 +156,31 @@ try {
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   check(await app.locator('pinproof-overlay .tb').isVisible(), '패널이 열려 있으면 페이지 오른쪽 위에 툴바');
   check((await app.evaluate(() => document.querySelectorAll('pinproof-overlay').length)) === 1, 'localhost 에는 페이지 스크립트가 한 번만(고정 등록과 사이트별 등록이 겹치지 않음)');
+  // 툴바 기본 위치: 화면 아래 가운데(아래에서 24px). 손잡이로 끌면 옮겨지고, 새로고침해도 그 자리를 기억한다
+  const tbBox = async () => {
+    await app.waitForTimeout(350);
+    return app.locator('pinproof-overlay .tb').boundingBox();
+  };
+  const vp = app.viewportSize();
+  let box = await tbBox();
+  check(Math.abs(box.x + box.width / 2 - vp.width / 2) <= 2 && Math.abs(vp.height - (box.y + box.height) - 24) <= 2, `툴바 기본 위치는 아래 가운데: x중심 ${Math.round(box.x + box.width / 2)} / 아래 여백 ${Math.round(vp.height - box.y - box.height)}`);
+  const grip = await app.locator('pinproof-overlay .tb .grip').boundingBox();
+  await app.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(grip.x - 200, grip.y - 300, { steps: 6 });
+  await app.mouse.up();
+  const moved = await tbBox();
+  // 손잡이 가운데를 잡아 (grip.x-200, grip.y-300)으로 놓았으니 이동량은 (-200-폭/2, -300-높이/2)
+  const want = { x: box.x - 200 - grip.width / 2, y: box.y - 300 - grip.height / 2 };
+  check(Math.abs(moved.x - want.x) <= 4 && Math.abs(moved.y - want.y) <= 4, `손잡이로 끌면 툴바가 옮겨짐: (${Math.round(moved.x)}, ${Math.round(moved.y)}) / 기대 (${Math.round(want.x)}, ${Math.round(want.y)})`);
+  await app.reload();
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  const kept = await tbBox();
+  check(Math.abs(kept.x - moved.x) <= 2 && Math.abs(kept.y - moved.y) <= 2, '새로고침해도 옮긴 위치를 기억');
+  // 이후 검사가 기본 위치를 쓰도록 저장한 위치를 지운다
+  await sw.evaluate(() => chrome.storage.local.remove('toolbarPos:http://localhost:5199'));
+  await app.reload();
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   check(!(await panel.getByRole('button', { name: /^요소/ }).count()), '패널에는 모드 버튼 없음(툴바로 옮김)');
 
   // ---------- 미분류 ----------

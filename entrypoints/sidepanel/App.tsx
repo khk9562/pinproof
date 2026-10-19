@@ -263,7 +263,7 @@ function DraftCard({ bn }: { bn: PinProof }) {
       <PasteZone bn={bn} />
       <div className="ev-list">
         {d.evidence.length === 0 && (
-          <p className="muted small">페이지 오른쪽 위 툴바의 요소·텍스트·영역·네트워크로 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>
+          <p className="muted small">페이지 아래 가운데 툴바의 요소·텍스트·영역·네트워크로 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>
         )}
         {d.evidence.map((e) => (
           <EvidenceRow

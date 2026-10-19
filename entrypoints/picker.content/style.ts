@@ -81,8 +81,8 @@ kbd {
   animation: pp-tb-in .25s var(--ease) both;
 }
 .tb.leave { animation: pp-tb-out .2s var(--ease) forwards; pointer-events: none; }
-@keyframes pp-tb-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-@keyframes pp-tb-out { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes pp-tb-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pp-tb-out { to { opacity: 0; transform: translateY(8px); } }
 .tb.dragging { cursor: grabbing; }
 .grip { width: 18px; height: 30px; display: grid; place-items: center; color: var(--text-3); cursor: grab; border-radius: var(--pill); transition: color var(--t); }
 .grip:hover { color: var(--text-2); }
@@ -218,9 +218,9 @@ kbd {
 .btn-move i { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-dot); }
 .btn-move b { font-family: var(--mono); font-weight: 600; }
 
-/* ---------- 경고 (패널 미연결·스크린샷 권한 등) ---------- */
+/* ---------- 경고 (패널 미연결·스크린샷 권한 등). 아래 가운데 툴바와 겹치지 않게 그 위에 ---------- */
 .toast {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: 520px; padding: 8px 14px;
+  position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); max-width: 520px; padding: 8px 14px;
   border-radius: var(--radius); background: var(--text); color: var(--bg); font: 500 12px/18px var(--sans);
   box-shadow: var(--shadow-float); animation: pp-up .2s var(--ease) both;
 }
