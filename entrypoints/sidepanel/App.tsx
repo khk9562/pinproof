@@ -20,7 +20,6 @@ export function App() {
 
   return (
     <div className="panel">
-      <Brand />
       <ConnectionBar bn={bn} />
       {bn.connection === 'granted' && (
         <>
@@ -69,11 +68,11 @@ function PinLogo({ size = 18 }: { size?: number }) {
   );
 }
 
+/** 제목 글자는 Chrome 사이드 패널 머리가 이미 보여주므로 아이콘만 둔다 */
 function Brand() {
   return (
     <header className="brand">
       <PinLogo />
-      <span>PinProof</span>
     </header>
   );
 }
@@ -83,6 +82,7 @@ function ConnectionBar({ bn }: { bn: PinProof }) {
   return (
     <section className="conn">
       <div className="conn-row">
+        <PinLogo size={16} />
         <span className="mono">{host}</span>
         <span className="arrow">→</span>
         {bn.connection === 'none' ? (
