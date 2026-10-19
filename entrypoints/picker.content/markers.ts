@@ -89,7 +89,7 @@ export class Markers {
     for (const [id, it] of this.items) it.el.classList.toggle('editing', id === uid);
   }
 
-  /** 패널 목록에서 고른 마커: 펄스 3회 + 그린 링 */
+  /** 패널 목록에서 고른 마커: 펄스 3회 + 남색 링 */
   target(uid: string): boolean {
     const it = this.items.get(uid);
     if (!it) return false;

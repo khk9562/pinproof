@@ -590,7 +590,7 @@ class Picker {
     ctx.drawImage(img, x0 * scale, y0 * scale, sw, sh, 0, 0, canvas.width, canvas.height);
     if (highlight) {
       const k = scale * out;
-      ctx.strokeStyle = '#16a34a';
+      ctx.strokeStyle = '#1e3a8a';
       ctx.lineWidth = Math.max(2, 2 * k);
       ctx.strokeRect((rect.left - x0) * k, (rect.top - y0) * k, rect.width * k, rect.height * k);
     }

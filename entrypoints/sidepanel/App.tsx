@@ -51,13 +51,20 @@ function PanelPaste({ bn }: { bn: PinProof }) {
   return null;
 }
 
-/** 익스텐션 아이콘과 같은 핀(assets/icon/pin.svg) */
+/** 익스텐션 아이콘과 같은 압정(assets/icon/pin.svg). 머리(하늘색) → 받침(남색) 그라데이션 */
 function PinLogo({ size = 18 }: { size?: number }) {
   return (
-    <svg className="pin-logo" viewBox="0 0 128 128" width={size} height={size} aria-hidden="true">
-      <path className="pp-body" d="M64 6C38.6 6 18 26.3 18 51.4c0 30.7 37.6 63.7 42.6 68a5.2 5.2 0 0 0 6.8 0C72.4 115.1 110 82.1 110 51.4 110 26.3 89.4 6 64 6Z" />
-      <circle className="pp-dot" cx="64" cy="51" r="25" />
-      <path className="pp-chk" d="M52.5 51.5l8 8 15-16" />
+    <svg className="pin-logo" viewBox="2.5 1.9 123.6 123.6" width={size} height={size} aria-hidden="true">
+      <defs>
+        <linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="74">
+          <stop offset="0" stopColor="#38bdf8" />
+          <stop offset="1" stopColor="#1e3a8a" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(64 64) rotate(45) scale(.9) translate(-64 -64)">
+        <path className="pp-needle" d="M64 70V121" />
+        <path className="pp-body" fill="url(#pp-grad)" d="M46 6H82A10 10 0 0 1 82 26H80L77 54H92A10 10 0 0 1 92 74H36A10 10 0 0 1 36 54H51L48 26H46A10 10 0 0 1 46 6Z" />
+      </g>
     </svg>
   );
 }
@@ -349,7 +356,7 @@ function rowWhat(e: Evidence): { text: string; bad?: number } {
   return { text: e.text ? `${name} "${e.text.replace(/\s+/g, ' ').slice(0, 40)}"` : name };
 }
 
-/** 문자 원: 페이지에 마커가 있는 증거는 연두로 채우고, 마커가 없는 증거(네트워크·붙여넣기)는 테두리만 */
+/** 문자 원: 페이지에 마커가 있는 증거는 하늘색으로 채우고, 마커가 없는 증거(네트워크·붙여넣기)는 테두리만 */
 function Letter({ ev }: { ev: Evidence }) {
   if (!ev.letter) return <span className="dot-loose" title="미분류" />;
   const onPage = ev.kind !== 'network' && ev.kind !== 'paste';
