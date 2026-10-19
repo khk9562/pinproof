@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   copyPrompt,
+  isEmptyRecord,
   pagePath,
   sameTarget,
   idFromFileName,
@@ -197,5 +198,20 @@ describe('sameTarget / pagePath', () => {
   });
   it('페이지 경로는 query·hash까지', () => {
     expect(pagePath('http://localhost:5190/nodes?ns=tenant-alpha#top')).toBe('/nodes?ns=tenant-alpha#top');
+  });
+});
+
+describe('isEmptyRecord', () => {
+  const blank = { ...record, title: '', related: '', memo: '', evidence: [] };
+  it('제목·연관·메모·증거가 모두 비면 빈 기록(유형은 보지 않음)', () => {
+    expect(isEmptyRecord(blank)).toBe(true);
+    expect(isEmptyRecord({ ...blank, title: '  ', memo: '\n' })).toBe(true);
+    expect(isEmptyRecord({ ...blank, type: '확인 요청' })).toBe(true);
+  });
+  it('하나라도 있으면 빈 기록이 아님', () => {
+    expect(isEmptyRecord({ ...blank, title: 'x' })).toBe(false);
+    expect(isEmptyRecord({ ...blank, related: '#1' })).toBe(false);
+    expect(isEmptyRecord({ ...blank, memo: 'x' })).toBe(false);
+    expect(isEmptyRecord({ ...blank, evidence: record.evidence.slice(0, 1) })).toBe(false);
   });
 });

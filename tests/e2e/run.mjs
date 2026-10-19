@@ -440,6 +440,17 @@ try {
   check(/지울-기록\.md/.test(before) && !/지울-기록\.md/.test(after), '작성 중인 기록 삭제');
   check(await panel.getByRole('button', { name: '+ 새 기록' }).isVisible(), '삭제 후 작성 중 상태 해제');
 
+  // 아무것도 쓰지 않고 작성 종료하면 기록이 남지 않는다(새 기록을 만들 때 생긴 md 까지 지움)
+  await panel.getByRole('button', { name: '+ 새 기록' }).click();
+  await panel.locator('.draft').waitFor();
+  await panel.waitForTimeout(700);
+  const emptyId = (await panel.locator('.draft-head .mono').textContent()).replace('#', '');
+  const hasEmptyMd = async () => (await readOpfs('.pinproof/')).split(',').some((n) => n.startsWith(`${emptyId}-`));
+  check(await hasEmptyMd(), `새 기록을 만들면 md 가 생김(#${emptyId})`);
+  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.waitForTimeout(700);
+  check(!(await hasEmptyMd()) && (await panel.locator('.records .rec-title', { hasText: '(제목 없음)' }).count()) === 0, '아무것도 쓰지 않고 작성 종료하면 기록이 사라짐');
+
   // ---------- 이전 이름(.bugnotes/) → .pinproof/ 옮기기 ----------
   await panel.evaluate(async () => {
     const root = await navigator.storage.getDirectory();

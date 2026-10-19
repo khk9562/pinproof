@@ -3,7 +3,7 @@ import { connectFolder, isSupportedUrl, routeOf, sitePattern } from '@/lib/conne
 import * as db from '@/lib/db';
 import { archiveRecord, deleteRecord, ensurePermission, hasLegacy, listRecords, migrateLegacy, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
 import type { WorkflowStatus } from '@/lib/fs';
-import { copyPrompt, letterFor, padId, pagePath, recordFileName, sameTarget } from '@/lib/markdown';
+import { copyPrompt, isEmptyRecord, letterFor, padId, pagePath, recordFileName, sameTarget } from '@/lib/markdown';
 import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
 import { BugRecord, Evidence, RecordSummary } from '@/lib/types';
@@ -483,11 +483,19 @@ export function usePinProof() {
     const d = draftRef.current;
     if (d) {
       window.clearTimeout(writeTimer.current);
-      await persistNow(d);
+      if (isEmptyRecord(d)) {
+        // 아무것도 쓰지 않고 끝낸 기록은 남기지 않는다(새 기록을 만들 때 이미 쓴 md 와 편집용 원본까지 지움)
+        const h = handleRef.current;
+        if (h && (await ensurePermission(h, false))) await deleteRecord(h, d.id, false).catch(() => {});
+        await db.deleteRecordModel(origin, d.id);
+        refreshRecords();
+      } else {
+        await persistNow(d);
+      }
     }
     await db.setDraftId(origin, null);
     setDraft(null);
-  }, [origin, persistNow]);
+  }, [origin, persistNow, refreshRecords]);
 
   const openRecord = useCallback(
     async (summary: RecordSummary) => {

@@ -170,6 +170,11 @@ function evidenceSection(record: BugRecord, e: Evidence): string {
   return lines.join('\n');
 }
 
+/** 제목·연관·메모가 모두 비어 있고 증거도 없는 기록(유형은 기본값이 있어 보지 않는다). 작성 종료 때 남기지 않는다 */
+export function isEmptyRecord(r: BugRecord): boolean {
+  return !r.title.trim() && !r.related.trim() && !r.memo.trim() && r.evidence.length === 0;
+}
+
 /** 익스텐션이 소유하는 본문(처리 기록 이전까지)을 만든다 */
 export function renderRecord(record: BugRecord): string {
   const out: string[] = [];
