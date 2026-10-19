@@ -139,73 +139,109 @@ try {
   await panel.waitForTimeout(500);
   check((await readOpfs('.pinproof/WORKFLOW.md')).includes('재처리') && !(await panel.locator('.wf-update').isVisible()), '[업데이트]로 WORKFLOW.md 최신화');
 
+  // ---------- 페이지 위 툴바 (패널이 열려 있으면 뜬다) ----------
+  const ov = (fn, arg) => app.locator('pinproof-overlay').evaluate(fn, arg);
+  const tool = (name) => app.locator('pinproof-overlay .tb .tools').getByRole('button', { name: new RegExp(`^${name}`) });
+  const pop = app.locator('pinproof-overlay .pop:not(.out)');
+  /** 팝오버가 뜨면 메모를 쓰고 Enter 로 담는다 */
+  const confirm = async (note = '') => {
+    await pop.waitFor({ timeout: 5000 });
+    const ta = pop.locator('textarea');
+    if (note) await ta.fill(note);
+    await ta.press('Enter');
+    await pop.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+  };
+  const pins = () => ov((h) => [...h.shadowRoot.querySelectorAll('.pin:not(.temp):not(.leaving):not([hidden])')].map((p) => (p.classList.contains('loose') ? '·' : p.firstChild?.textContent ?? '')));
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  check(await app.locator('pinproof-overlay .tb').isVisible(), '패널이 열려 있으면 페이지 오른쪽 위에 툴바');
+  check(!(await panel.getByRole('button', { name: /^요소/ }).count()), '패널에는 모드 버튼 없음(툴바로 옮김)');
+
   // ---------- 미분류 ----------
-  await panel.getByRole('button', { name: /^요소/ }).click();
+  await tool('요소').click();
+  check(await ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode')), '모드에 들어가면 툴바가 안내 띠로 변신');
   await app.hover('#help');
-  await app.click('#help'); // 실제 마우스 클릭으로 담기
+  await app.click('#help'); // 실제 마우스 클릭 → 그 자리에 팝오버
+  await pop.waitFor({ timeout: 5000 });
+  check(await pop.locator('.p-to.loose').isVisible(), '작성 중 기록이 없으면 팝오버가 "미분류"로 담긴다고 표시');
+  await confirm();
   await panel.locator('.section .ev').first().waitFor({ timeout: 5000 }).catch(() => {});
-  check((await panel.locator('.section .ev').count()) === 1, '클릭으로 담기 + 작성 중인 건이 없을 때는 미분류로');
+  check((await panel.locator('.section .ev').count()) === 1, '클릭 → 팝오버 Enter 로 담기 + 작성 중인 건이 없을 때는 미분류로');
   check((await panel.locator('.section .ev .target-sel').first().textContent()) === '#help', '미분류 카드에 선택한 요소 표시');
+  await app.waitForTimeout(300);
+  check((await pins()).join(',') === '·', '미분류 증거는 문자 없는 회색 마커');
 
   // ---------- 새 기록 + 요소 ----------
   await panel.getByRole('button', { name: '+ 새 기록' }).click();
   await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('대시보드 총합 불일치');
   await panel.getByPlaceholder(/현상: 무엇이/).fill('총합은 10인데 노드 목록 CPU를 더하면 100이 넘음');
   await panel.getByPlaceholder('예: #589').fill('#589');
+  await app.waitForTimeout(300);
+  check((await app.locator('pinproof-overlay .tb .rec').textContent()).includes('#001'), '툴바 기록 칩에 작성 중 기록 번호');
 
   await app.hover('[data-testid="summary-total"]');
   // ↑ 로 부모 카드까지 올라갔다가 ↓ 로 되돌아오는 키보드 이동
   await app.keyboard.press('ArrowUp');
   await app.keyboard.press('ArrowDown');
-  await app.keyboard.press('Enter');
-  await panel.locator('.draft .ev').first().waitFor();
-  const labelText = await app.locator('pinproof-overlay').evaluate((h) => h.shadowRoot.querySelector('.label').textContent);
+  const labelText = await ov((h) => h.shadowRoot.querySelector('.label').textContent);
   check(/<strong>/.test(labelText), `hover 라벨 표시: ${labelText}`);
+  await app.keyboard.press('Enter');
+  await pop.waitFor({ timeout: 5000 });
+  await pop.locator('textarea').fill('총합 숫자가 목록 합과 다름');
+  await app.waitForTimeout(350);
+  await app.screenshot({ path: path.join(outDir, 'page-popover.png') });
+  check((await pop.locator('.p-to').textContent()).includes('A') && (await pop.locator('.p-to').textContent()).includes('#001'), '팝오버 머리에 "#001 에 A 로 담김"');
+  check((await pop.locator('.p-name').textContent()).includes('<strong>'), '팝오버 머리에 요소 이름');
+  await confirm('총합 숫자가 목록 합과 다름');
+  const dropped = await app.locator('pinproof-overlay .pin.drop').waitFor({ timeout: 1000 }).then(() => true, () => false);
+  check(dropped, '담으면 새 마커에 꽂힘 애니메이션');
+  await panel.locator('.draft .ev').first().waitFor();
 
-  // 담은 결과는 사이드 패널에만: 방금 담은 카드에 요소 이름·selector 표시, 페이지에는 배지·토스트 없음
+  // 방금 담은 줄은 펼쳐져 요소 이름·selector 를 보여주고, 페이지에는 A 마커가 꽂힌다
   const fresh = panel.locator('.ev.fresh');
   check((await fresh.locator('.target-name').textContent()) === '<strong>', '패널에 방금 담은 요소 이름 표시');
   check((await fresh.locator('.target-sel').textContent()) === '[data-testid="summary-total"]', '패널에 selector 표시');
-  const pageUi = await app.locator('pinproof-overlay').evaluate((h) => ({
-    markers: h.shadowRoot.querySelectorAll('.marker').length,
-    toastVisible: !h.shadowRoot.querySelector('.toast').hidden,
-  }));
-  check(pageUi.markers === 0 && !pageUi.toastVisible, '페이지 위에는 배지·토스트 없음');
+  check((await fresh.locator('.memo').textContent()) === '총합 숫자가 목록 합과 다름', '팝오버에서 쓴 메모가 한 줄 목록에');
+  await app.waitForTimeout(400);
+  await app.mouse.move(1, 1);
+  await app.waitForTimeout(400);
+  await app.screenshot({ path: path.join(outDir, 'page-markers.png') });
+  check((await pins()).sort().join(',') === 'A,·', `페이지에 A 마커 + 미분류 점: ${(await pins()).join(',')}`);
+  check((await ov((h) => h.shadowRoot.querySelector('.pin:not(.loose) .tip').textContent)).includes('총합 숫자가'), '마커 툴팁에 메모');
 
-  // ✕ 로 삭제 → 다시 담기 (문자는 B부터 이어짐을 피하려고 바로 다시 A가 되는지는 보지 않음)
+  // ✕ 로 삭제 → 다시 담기
   await app.keyboard.press('Escape');
+  check(!(await ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode'))), 'Esc 로 모드 종료 → 툴바 원래대로');
   await fresh.locator('.ev-del').click();
-  await panel.waitForTimeout(300);
+  await panel.waitForTimeout(400);
   check((await panel.locator('.draft .ev').count()) === 0, '✕ 로 증거 삭제');
-  await panel.getByRole('button', { name: /^요소/ }).click();
+  check((await pins()).join(',') === '·', '삭제하면 페이지 마커도 사라짐');
+  await tool('요소').click();
   await app.mouse.move(1, 1);
   await app.click('[data-testid="summary-total"]'); // 이번엔 클릭으로
+  await confirm();
   await panel.locator('.draft .ev').first().waitFor({ timeout: 5000 }).catch(() => {});
   check((await panel.locator('.draft .ev').count()) === 1, '요소 모드에서 클릭으로 담기');
   check((await panel.locator('.draft .ev .target-page').first().textContent()).includes('/dashboard'), '카드에 페이지 경로 표시');
-  // 같은 요소를 다시 클릭해도 같은 기록에 두 번 담기지 않는다
-  await app.click('[data-testid="summary-total"]');
-  await panel.waitForTimeout(1200);
+  // 같은 요소를 다시 고르면 새로 담지 않고 그 마커의 편집 팝오버가 열린다
+  // (요소가 마커보다 작아 마커가 덮을 수 있다 — 마커를 눌러도 같은 팝오버라 좌표로 누른다)
+  await app.click('[data-testid="summary-total"]', { force: true });
+  await pop.waitFor({ timeout: 3000 }).catch(() => {});
+  check((await pop.getAttribute('aria-label').catch(() => '')) === '증거 A 편집', '같은 요소를 다시 고르면 A 편집 팝오버(중복 담기 방지)');
+  // 편집 팝오버에서 메모를 고치면 패널에 반영
+  await pop.locator('textarea').fill('페이지에서 고친 메모');
+  await pop.getByRole('button', { name: '저장' }).click();
+  await panel.waitForTimeout(400);
+  check((await panel.locator('.draft .ev .memo').first().textContent()) === '페이지에서 고친 메모', '마커 편집 팝오버의 메모가 패널에 반영');
   check((await panel.locator('.draft .ev').count()) === 1, '같은 요소 중복 담기 방지');
-  check((await panel.locator('.notice').textContent().catch(() => '')).includes('이미 A'), '중복 시 "이미 A로 담은 요소" 안내');
+  await app.keyboard.press('Escape');
+  // 마커 숨기기
+  await app.keyboard.press('Alt+Shift+KeyH');
+  check(await ov((h) => h.shadowRoot.querySelector('.pins').classList.contains('off')), 'Alt+Shift+H 로 마커 숨기기');
+  await app.keyboard.press('Alt+Shift+KeyH');
 
   // ---------- 텍스트 ----------
-  await panel.getByRole('button', { name: /^텍스트/ }).click();
+  await tool('텍스트').click();
   await app.evaluate(() => {
-    const t = document.getElementById('help').firstChild;
-    const r = document.createRange();
-    r.setStart(t, 0);
-    r.setEnd(t, 20);
-    const s = getSelection();
-    s.removeAllRanges();
-    s.addRange(r);
-  });
-  const helpBox = await app.locator('#help').boundingBox();
-  await app.mouse.move(helpBox.x + 5, helpBox.y + 5);
-  await app.mouse.down();
-  await app.mouse.up();
-  await app.evaluate(() => {
-    // 위 mouseup이 선택을 지웠을 수 있어 다시 만들고 mouseup 이벤트를 보낸다
     const t = document.getElementById('help').firstChild;
     const r = document.createRange();
     r.setStart(t, 0);
@@ -215,32 +251,45 @@ try {
     s.addRange(r);
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
-  await app.locator('pinproof-overlay .chip').click();
+  await confirm();
   await panel.locator('.draft .ev').nth(1).waitFor();
+  await app.keyboard.press('Escape'); // 담은 뒤에도 모드는 계속된다 → 끝내야 툴바 버튼이 다시 보인다
 
   // ---------- 영역 ----------
-  await panel.getByRole('button', { name: /^영역/ }).click();
+  await tool('영역').click();
   await app.mouse.move(20, 60);
   await app.mouse.down();
   await app.mouse.move(400, 200, { steps: 5 });
   await app.mouse.up();
+  await confirm();
   await panel.locator('.draft .ev').nth(2).waitFor();
   await app.keyboard.press('Escape');
 
   // ---------- 페이지 이동 후 계속 수집 + 컨테이너 + 네트워크 ----------
   await app.goto(`${BASE}/nodes`);
   await app.locator('#node-table').waitFor();
-  await panel.waitForTimeout(500);
-  await panel.getByRole('button', { name: /^요소/ }).click();
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  check(await app.locator('pinproof-overlay .tb').isVisible(), '페이지를 옮겨도 툴바가 다시 뜸');
+  await tool('요소').click();
   await app.hover('#node-table td');
   await app.keyboard.press('ArrowUp'); // tr
   await app.keyboard.press('ArrowUp'); // tbody
   await app.keyboard.press('ArrowUp'); // table
   await app.keyboard.press('Enter');
+  await confirm();
   await panel.locator('.draft .ev').nth(3).waitFor();
   await app.keyboard.press('Escape');
-  await panel.getByRole('button', { name: /^네트워크/ }).click();
+  await tool('네트워크').click();
   await panel.locator('.draft .ev').nth(4).waitFor();
+  await app.waitForTimeout(300);
+  check((await pins()).join(',') === 'D', `다른 페이지(/nodes)에서는 그 페이지의 마커만: ${(await pins()).join(',')}`);
+  check((await panel.locator('.draft .ev').nth(4).locator('.letter.outline').count()) === 1, '페이지 마커가 없는 증거(네트워크)는 테두리 문자');
+  // 패널 목록에서 D 줄을 펼치면 페이지의 D 마커가 반짝인다 (방금 담아 이미 펼쳐져 있으면 접었다가 다시)
+  const dHead = panel.locator('.draft .ev').nth(3).locator('.ev-head');
+  if ((await dHead.getAttribute('aria-expanded')) === 'true') await dHead.click();
+  await dHead.click();
+  await app.waitForTimeout(700);
+  check(await ov((h) => [...h.shadowRoot.querySelectorAll('.pin')].some((p) => p.classList.contains('target'))), '목록 클릭 → 마커 펄스');
 
   // ---------- 클립보드 붙여넣기: 이미지 1장 + 텍스트 ----------
   await panel.evaluate(async () => {
@@ -335,15 +384,19 @@ try {
   await panel.getByRole('button', { name: '+ 새 기록' }).click();
   await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('지울 기록');
   // 증거 2개를 담고 A를 지우면 남은 증거가 A로 다시 매겨진다
-  await panel.getByRole('button', { name: /^요소/ }).click();
+  await tool('요소').click();
   await app.click('h1');
+  await confirm();
   await panel.locator('.draft .ev').nth(0).waitFor();
   await app.click('#node-table');
+  await confirm();
   await panel.locator('.draft .ev').nth(1).waitFor();
   await app.keyboard.press('Escape');
   await panel.locator('.draft .ev').first().locator('.ev-del').click();
   await panel.waitForTimeout(400);
   const letters = await panel.locator('.draft .ev .letter').allTextContents();
+  const firstHead = panel.locator('.draft .ev').first().locator('.ev-head');
+  if ((await firstHead.getAttribute('aria-expanded')) !== 'true') await firstHead.click();
   check(letters.join(',') === 'A' && (await panel.locator('.draft .ev .target-sel').first().textContent()).startsWith('#node-table'), `증거 삭제 후 문자 다시 매기기: ${letters.join(',')}`);
   await panel.waitForTimeout(1000);
   const before = await readOpfs('.pinproof/');
@@ -423,6 +476,16 @@ try {
     }
     await app.screenshot({ path: path.join(outDir, 'heureum.png') });
   }
+
+  // ---------- 패널을 닫으면 페이지의 툴바·마커가 사라진다 ----------
+  await app.goto(`${BASE}/dashboard`);
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  await app.waitForTimeout(800); // 패널 상태가 도착해 마커가 그려질 때까지
+  check((await pins()).length > 0, `닫기 전: 마커가 보임 (${(await pins()).join(',')})`);
+  await panel.close();
+  await app.waitForTimeout(600);
+  check(await ov((h) => h.shadowRoot.querySelector('.tb').hidden), '패널을 닫으면 툴바 사라짐');
+  check((await pins()).length === 0, '패널을 닫으면 마커 사라짐');
 } finally {
   await ctx.close();
   server.close();

@@ -78,6 +78,12 @@ export interface Evidence {
   pastedText?: string;
   /** PNG data URL. 파일로 쓸 때 assets/<id>/<letter>.png 로 저장 */
   screenshot?: string;
+  /**
+   * 페이지 위 마커를 세울 자리. md 에는 쓰지 않는다.
+   * element·container·text: 요소 안에서 클릭한 가로 위치(0~1, 마커는 요소 위 테두리에 선다)
+   * region: 캡처 때의 페이지 좌표(rect + 스크롤)
+   */
+  anchor?: { x: number; y: number };
 }
 
 export interface BugRecord {

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
-import { PickMode } from '@/lib/messages';
 import { Evidence, KIND_LABEL, RECORD_TYPES, RecordSummary } from '@/lib/types';
 import { PinProof, usePinProof } from './usePinProof';
 
@@ -25,7 +24,6 @@ export function App() {
       <ConnectionBar bn={bn} />
       {bn.connection === 'granted' && (
         <>
-          <ModeBar bn={bn} />
           {bn.draft ? <DraftCard bn={bn} /> : <NoDraft bn={bn} />}
           <InboxSection bn={bn} />
           <RecordList bn={bn} />
@@ -53,10 +51,21 @@ function PanelPaste({ bn }: { bn: PinProof }) {
   return null;
 }
 
+/** 익스텐션 아이콘과 같은 핀(assets/icon/pin.svg) */
+function PinLogo({ size = 18 }: { size?: number }) {
+  return (
+    <svg className="pin-logo" viewBox="0 0 128 128" width={size} height={size} aria-hidden="true">
+      <path className="pp-body" d="M64 6C38.6 6 18 26.3 18 51.4c0 30.7 37.6 63.7 42.6 68a5.2 5.2 0 0 0 6.8 0C72.4 115.1 110 82.1 110 51.4 110 26.3 89.4 6 64 6Z" />
+      <circle className="pp-dot" cx="64" cy="51" r="25" />
+      <path className="pp-chk" d="M52.5 51.5l8 8 15-16" />
+    </svg>
+  );
+}
+
 function Brand() {
   return (
     <header className="brand">
-      <span className="logo">PP</span>
+      <PinLogo />
       <span>PinProof</span>
     </header>
   );
@@ -123,41 +132,6 @@ function ConnectionBar({ bn }: { bn: PinProof }) {
   );
 }
 
-const MODES: { mode: PickMode; label: string; key: string }[] = [
-  { mode: 'element', label: '요소', key: 'E' },
-  { mode: 'text', label: '텍스트', key: 'T' },
-  { mode: 'region', label: '영역', key: 'R' },
-];
-
-function ModeBar({ bn }: { bn: PinProof }) {
-  return (
-    <section className="modes">
-      {MODES.map((m) => (
-        <button
-          key={m.mode}
-          className={`mode ${bn.mode === m.mode ? 'on' : ''}`}
-          onClick={() => bn.startMode(m.mode)}
-          title={`Alt+Shift+${m.key}`}
-        >
-          {m.label}
-          <kbd>{m.key}</kbd>
-        </button>
-      ))}
-      <button className="mode" onClick={bn.attachNetwork} title="현재 route에서 호출된 API 목록을 증거로 담기">
-        네트워크
-        <kbd>N</kbd>
-      </button>
-      {bn.mode && <p className="mode-hint">{MODE_HINT[bn.mode]}</p>}
-    </section>
-  );
-}
-
-const MODE_HINT: Record<PickMode, string> = {
-  element: '페이지에서 요소에 마우스를 올리고 클릭(또는 Enter)으로 담기 · ↑ 부모 ↓ 자식 ←→ 형제 · Esc 종료',
-  text: '페이지에서 글자를 드래그한 뒤 옆에 뜨는 [+ 담기] · Esc 종료',
-  region: '페이지에서 사각형을 드래그해 담기 · Esc 종료',
-};
-
 function NoDraft({ bn }: { bn: PinProof }) {
   return (
     <section className="nodraft">
@@ -212,13 +186,16 @@ function DraftCard({ bn }: { bn: PinProof }) {
 
       <PasteZone bn={bn} />
       <div className="ev-list">
-        {d.evidence.length === 0 && <p className="muted small">위 버튼으로 요소·텍스트·영역·네트워크를 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>}
+        {d.evidence.length === 0 && (
+          <p className="muted small">페이지 오른쪽 위 툴바의 요소·텍스트·영역·네트워크로 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>
+        )}
         {d.evidence.map((e) => (
-          <EvidenceCard
+          <EvidenceRow
             key={e.uid}
             ev={e}
             fresh={bn.freshUid === e.uid}
             onNote={(note) => bn.updateEvidence(e.uid, { note })}
+            onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}
             onMove={() => bn.evidenceToInbox(e.uid)}
             moveLabel="미분류로"
@@ -356,54 +333,102 @@ function Target({ ev }: { ev: Evidence }) {
   );
 }
 
-function EvidenceCard(props: {
+/** 한 줄 목록에 보일 "무엇을 담았나" */
+function rowWhat(e: Evidence): { text: string; bad?: number } {
+  if (e.kind === 'network') {
+    const reqs = e.requests ?? [];
+    const failed = reqs.find((r) => r.status === 0 || r.status >= 400);
+    const first = failed ?? reqs[0];
+    const path = first ? new URL(first.url).pathname : '';
+    return { text: `${first?.method ?? ''} ${path}${reqs.length > 1 ? ` 외 ${reqs.length - 1}건` : ''}`, bad: failed ? failed.status || 0 : undefined };
+  }
+  if (e.kind === 'paste') return { text: e.pastedText ? `"${e.pastedText.replace(/\s+/g, ' ').slice(0, 60)}"` : '이미지' };
+  if (e.kind === 'text') return { text: `"${e.quote?.exact.replace(/\s+/g, ' ').trim().slice(0, 60) ?? ''}"` };
+  if (e.kind === 'region') return { text: `영역 ${e.rect?.width}×${e.rect?.height}` };
+  const name = `<${e.label ?? e.tag}>`;
+  return { text: e.text ? `${name} "${e.text.replace(/\s+/g, ' ').slice(0, 40)}"` : name };
+}
+
+/** 문자 원: 페이지에 마커가 있는 증거는 연두로 채우고, 마커가 없는 증거(네트워크·붙여넣기)는 테두리만 */
+function Letter({ ev }: { ev: Evidence }) {
+  if (!ev.letter) return <span className="dot-loose" title="미분류" />;
+  const onPage = ev.kind !== 'network' && ev.kind !== 'paste';
+  return (
+    <span className={`letter ${onPage ? '' : 'outline'}`} title={onPage ? '페이지에 마커가 있는 증거' : '페이지 마커 없음'}>
+      {ev.letter}
+    </span>
+  );
+}
+
+function EvidenceRow(props: {
   ev: Evidence;
   fresh: boolean;
   onNote: (note: string) => void;
+  onLocate: () => void;
   onGo: () => void;
   onMove: () => void;
   moveLabel: string;
   onDelete: () => void;
 }) {
   const { ev } = props;
-  const [open, setOpen] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
+  /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? props.fresh;
+  const setOpen = setUserOpen;
+  const [shot, setShot] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (props.fresh) cardRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (props.fresh) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [props.fresh]);
+  const what = rowWhat(ev);
   return (
-    <div ref={cardRef} className={`ev ${ev.kind} ${props.fresh ? 'fresh' : ''}`}>
-      <div className="ev-top">
-        {ev.letter ? <span className={`letter ${ev.kind === 'text' || ev.kind === 'region' ? 'green' : ev.kind === 'network' ? 'gray' : ev.kind === 'paste' ? 'purple' : 'blue'}`}>{ev.letter}</span> : null}
-        <span className="kind">{KIND_LABEL[ev.kind]}</span>
-        <span className="route mono" title={ev.url}>
-          {pagePath(ev.url)}
-        </span>
-        {props.fresh && <span className="fresh-tag">방금 담음</span>}
-        {ev.screenshot && ev.kind !== 'paste' && <img className="thumb" src={ev.screenshot} alt="" onClick={() => setOpen(!open)} title="스크린샷 크게 보기" />}
+    <div ref={rowRef} className={`ev ${ev.kind} ${props.fresh ? 'fresh' : ''} ${open ? 'open' : ''}`}>
+      <div className="ev-row">
+        <button
+          className="ev-head"
+          aria-expanded={open}
+          onClick={() => {
+            if (!open) props.onLocate();
+            setOpen(!open);
+          }}
+          title={open ? '접기' : '펼치기 · 이 페이지에 있으면 마커를 반짝입니다'}
+        >
+          <Letter ev={ev} />
+          <span className="what mono" title={what.text}>
+            {what.bad !== undefined && <span className="code-bad">{what.bad || 'ERR'}</span>}
+            {what.text}
+          </span>
+          <span className={`memo ${ev.note ? '' : 'none'}`}>{ev.note || '메모 없음'}</span>
+        </button>
         <button className="ev-del" onClick={props.onDelete} title="이 증거 삭제" aria-label="이 증거 삭제">
           ✕
         </button>
       </div>
-      <Target ev={ev} />
-      {ev.kind !== 'paste' && evidenceSummary(ev) && <div className="sum">{evidenceSummary(ev)}</div>}
-      {open && ev.screenshot && <img className="shot" src={ev.screenshot} alt="스크린샷" onClick={() => setOpen(false)} />}
-      {ev.kind === 'network' && (
-        <details className="net">
-          <summary>호출 목록</summary>
-          {(ev.requests ?? []).map((r, i) => (
-            <div key={i} className="net-row mono">
-              <span className={r.status === 0 || r.status >= 400 ? 'bad' : ''}>{r.status || 'ERR'}</span> {r.method}{' '}
-              {new URL(r.url).pathname} · {formatSize(r.size)}
-            </div>
-          ))}
-        </details>
+      {open && (
+        <div className="ev-body">
+          <Target ev={ev} />
+          {ev.kind !== 'paste' && evidenceSummary(ev) && <div className="sum">{evidenceSummary(ev)}</div>}
+          {ev.kind === 'network' && (
+            <details className="net">
+              <summary>호출 목록</summary>
+              {(ev.requests ?? []).map((r, i) => (
+                <div key={i} className="net-row mono">
+                  <span className={r.status === 0 || r.status >= 400 ? 'bad' : ''}>{r.status || 'ERR'}</span> {r.method}{' '}
+                  {new URL(r.url).pathname} · {formatSize(r.size)}
+                </div>
+              ))}
+            </details>
+          )}
+          {ev.screenshot && ev.kind !== 'paste' && (
+            <img className={shot ? 'shot' : 'thumb'} src={ev.screenshot} alt="스크린샷" onClick={() => setShot(!shot)} title={shot ? '작게 보기' : '스크린샷 크게 보기'} />
+          )}
+          <input className="ev-note" value={ev.note} placeholder="한 줄 메모 (선택)" onChange={(e) => props.onNote(e.target.value)} />
+          <div className="ev-actions">
+            {ev.selector && <button onClick={props.onGo}>페이지로 이동</button>}
+            <button onClick={props.onMove}>{props.moveLabel}</button>
+          </div>
+        </div>
       )}
-      <input className="ev-note" value={ev.note} placeholder="한 줄 메모 (선택)" onChange={(e) => props.onNote(e.target.value)} />
-      <div className="ev-actions">
-        {ev.selector && <button onClick={props.onGo}>페이지로 이동</button>}
-        <button onClick={props.onMove}>{props.moveLabel}</button>
-      </div>
     </div>
   );
 }
@@ -418,11 +443,12 @@ function InboxSection({ bn }: { bn: PinProof }) {
       </button>
       {open &&
         bn.inbox.map((e) => (
-          <EvidenceCard
+          <EvidenceRow
             key={e.uid}
             ev={e}
             fresh={bn.freshUid === e.uid}
             onNote={(note) => bn.setInboxNote(e.uid, note)}
+            onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}
             onMove={() => bn.inboxToDraft(e.uid)}
             moveLabel="작성 중인 기록에 넣기"

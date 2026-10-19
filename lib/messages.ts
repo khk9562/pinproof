@@ -1,4 +1,4 @@
-import { Evidence, NetworkEntry } from './types';
+import { Evidence, EvidenceKind, NetworkEntry } from './types';
 
 export type PickMode = 'element' | 'text' | 'region';
 
@@ -6,9 +6,51 @@ export type PickMode = 'element' | 'text' | 'region';
 export type ToContent =
   | { type: 'bn:start'; mode: PickMode }
   | { type: 'bn:stop' }
-  | { type: 'bn:flash'; selector: string }
+  | { type: 'bn:flash'; selector: string; uid?: string }
   | { type: 'bn:network' }
   | { type: 'bn:ping' };
+
+/**
+ * 사이드 패널 ↔ content script 포트. 패널이 열려 있는 동안만 이어져 있고,
+ * content script는 포트가 있을 때만 페이지 위 툴바·마커를 보여준다.
+ */
+export const PANEL_PORT = 'pinproof-panel';
+
+/** 페이지 위 마커 하나 (작성 중 기록의 증거 = letter 있음, 미분류 = letter 없음) */
+export interface MarkerInfo {
+  uid: string;
+  letter?: string;
+  kind: EvidenceKind;
+  route: string;
+  note: string;
+  selector?: string;
+  anchor?: { x: number; y: number };
+  label?: string;
+  tag?: string;
+  /** text 전용: 담은 글자 */
+  quote?: string;
+  rect?: { width: number; height: number };
+  component?: string;
+  source?: string;
+}
+
+export interface OverlayState {
+  /** 작성 중인 기록. 없으면 담는 증거는 미분류로 간다 */
+  record: { id: number; title: string; count: number } | null;
+  /** 다음에 담으면 붙을 문자(작성 중 기록이 없으면 null) */
+  nextLetter: string | null;
+  inboxCount: number;
+  markers: MarkerInfo[];
+}
+
+/** 패널 → content (포트) */
+export type PortToContent = { type: 'bn:state'; state: OverlayState };
+
+/** 페이지 위 편집 팝오버에서 고친 내용 (content → 패널) */
+export type EvidenceEdit =
+  | { action: 'note'; note: string }
+  | { action: 'delete' }
+  | { action: 'move' };
 
 export interface NetworkSnapshot {
   url: string;
@@ -21,7 +63,8 @@ export interface NetworkSnapshot {
 export type ToPanel =
   | { type: 'bn:captured'; evidence: Evidence }
   | { type: 'bn:mode'; mode: PickMode | null }
-  | { type: 'bn:hello'; url: string };
+  | { type: 'bn:hello'; url: string }
+  | { type: 'bn:edit'; uid: string; edit: EvidenceEdit };
 
 /** content script → background */
 export type ToBackground = { type: 'bn:screenshot' };

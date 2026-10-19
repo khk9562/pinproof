@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- 16px 전용 단순형: 체크 없이 연두 원만, 테두리를 얇게 해 몸통을 크게 -->
+  <path d="M64 5C37.5 5 16 26.2 16 52.4c0 31.6 39.2 65.6 44.4 70a5.5 5.5 0 0 0 7.2 0C72.8 118 112 84 112 52.4 112 26.2 90.5 5 64 5Z"
+        fill="#16a34a" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <circle cx="64" cy="52" r="24" fill="#a3e635"/>
+</svg>

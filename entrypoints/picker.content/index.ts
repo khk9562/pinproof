@@ -14,15 +14,23 @@ import {
   BRIDGE_KEY,
   BridgeRequest,
   BridgeResponse,
+  EvidenceEdit,
+  MarkerInfo,
   NetworkSnapshot,
+  OverlayState,
+  PANEL_PORT,
   PickMode,
+  PortToContent,
   TARGET_ATTR,
   ToContent,
   ToPanel,
 } from '@/lib/messages';
 import { currentRoute } from '@/lib/network';
 import { ComponentInfo, Evidence, NetworkEntry } from '@/lib/types';
+import { Markers } from './markers';
+import { Box, Popover, PopoverHead } from './popover';
 import { OVERLAY_CSS } from './style';
+import { Toolbar } from './toolbar';
 
 export default defineContentScript({
   matches: ['http://localhost/*', 'http://127.0.0.1/*'],
@@ -83,7 +91,15 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-type Box = { left: number; top: number; width: number; height: number };
+const clamp01 = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5);
+
+function chainText(c?: ComponentInfo | null): string | undefined {
+  return c && c.chain.length ? c.chain.slice(0, 3).join(' › ') : undefined;
+}
+
+function sourceText(c?: ComponentInfo | null): string | undefined {
+  return c?.source ? `${c.source}${c.sourceApprox ? ' 근처' : ''}` : undefined;
+}
 
 class Picker {
   private host!: HTMLElement;
@@ -91,16 +107,24 @@ class Picker {
   private box!: HTMLElement;
   private label!: HTMLElement;
   private toastEl!: HTMLElement;
-  private chip!: HTMLButtonElement;
   private catcher!: HTMLElement;
   private dragRect!: HTMLElement;
+  private toolbar!: Toolbar;
+  private popover!: Popover;
+  private markers!: Markers;
+
+  /** 사이드 패널과의 연결. 있을 때만 툴바·마커를 보여준다 */
+  private port: chrome.runtime.Port | null = null;
+  private state: OverlayState | null = null;
+  private markersHidden = false;
+  /** 방금 담기를 확정한 증거. 패널이 상태를 돌려주면 그 마커에 꽂힘 애니메이션 */
+  private dropUid: string | null = null;
 
   private mode: PickMode | null = null;
   private current: Element | null = null;
   private lastMouseTarget: Element | null = null;
   private downPath: Element[] = [];
   private labelCache = new WeakMap<Element, string>();
-  private pendingQuote: { quote: NonNullable<ReturnType<typeof quoteFromSelection>>; rect: DOMRect; container: Element } | null = null;
   private dragStart: { x: number; y: number } | null = null;
   private lastUrl = location.href;
   private busy = false;
@@ -122,7 +146,7 @@ class Picker {
           sendResponse({ ok: true });
           return;
         case 'bn:flash':
-          sendResponse({ found: this.flash(msg.selector) });
+          sendResponse({ found: this.flash(msg.selector, msg.uid) });
           return;
         case 'bn:network':
           this.networkSnapshot().then(sendResponse);
@@ -130,23 +154,43 @@ class Picker {
       }
     });
 
-    // 단축키: Alt+Shift+E/T/R 로 모드 시작 (입력 중에는 무시)
+    // 사이드 패널이 열리면 포트로 이어진다. 끊기면(패널 닫힘·다른 탭) 툴바·마커를 거둔다
+    chrome.runtime.onConnect.addListener((port) => {
+      if (port.name !== PANEL_PORT) return;
+      this.port?.disconnect();
+      this.port = port;
+      port.onMessage.addListener((msg: PortToContent) => {
+        if (msg.type === 'bn:state') this.applyState(msg.state);
+      });
+      port.onDisconnect.addListener(() => {
+        if (this.port !== port) return;
+        this.port = null;
+        this.state = null;
+        this.stop();
+        this.popover.close(false);
+        this.markers.clear();
+        this.toolbar.hide();
+      });
+      this.toolbar.show();
+    });
+
+    // 단축키: Alt+Shift+E/T/R 모드, N 네트워크, H 마커 숨기기 (입력 중에는 무시)
     window.addEventListener(
       'keydown',
       (e) => {
         if (this.isTyping(e)) return;
         if (e.altKey && e.shiftKey && !e.metaKey && !e.ctrlKey) {
-          if (e.code === 'KeyN') {
-            e.preventDefault();
-            this.captureNetwork();
-            return;
-          }
           const map: Record<string, PickMode> = { KeyE: 'element', KeyT: 'text', KeyR: 'region' };
           const m = map[e.code];
-          if (m) {
-            e.preventDefault();
-            this.mode === m ? this.stop() : this.start(m);
+          if (!m && e.code !== 'KeyN' && e.code !== 'KeyH') return;
+          e.preventDefault();
+          if (!this.port) {
+            this.toast('PinProof 사이드 패널을 먼저 열어주세요 (Alt+Shift+B)', 'warn');
+            return;
           }
+          if (e.code === 'KeyN') this.captureNetwork();
+          else if (e.code === 'KeyH') this.toggleMarkers();
+          else this.toggleMode(m);
         }
       },
       true,
@@ -163,6 +207,10 @@ class Picker {
 
     const loop = () => {
       if (this.current && this.mode === 'element') this.positionBox(this.current);
+      if (this.port) {
+        this.markers.tick();
+        this.popover.tick();
+      }
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -192,20 +240,90 @@ class Picker {
       <div class="box" hidden></div>
       <div class="label" hidden></div>
       <div class="catcher" hidden><div class="drag" hidden></div></div>
-      <button class="chip" hidden>+ 담기</button>
-      <div class="toast" hidden></div>
     `;
     this.box = this.root.querySelector('.box')!;
     this.label = this.root.querySelector('.label')!;
     this.catcher = this.root.querySelector('.catcher')!;
     this.dragRect = this.root.querySelector('.drag')!;
-    this.chip = this.root.querySelector('.chip')!;
-    this.toastEl = this.root.querySelector('.toast')!;
+    // 쌓이는 순서: 마커 < 툴바 < 팝오버(바깥 막 포함) < 경고
+    this.markers = new Markers(this.root, (m, pin) => this.editMarker(m, pin));
+    this.toolbar = new Toolbar(this.root, {
+      onMode: (m) => this.toggleMode(m),
+      onNetwork: () => this.captureNetwork(),
+      onToggleMarkers: () => this.toggleMarkers(),
+      onStop: () => this.stop(),
+    });
+    this.popover = new Popover(this.root);
+    this.toastEl = document.createElement('div');
+    this.toastEl.className = 'toast';
+    this.toastEl.hidden = true;
+    this.root.appendChild(this.toastEl);
     document.documentElement.appendChild(this.host);
 
-    this.chip.addEventListener('mousedown', (e) => e.preventDefault());
-    this.chip.addEventListener('click', () => this.captureText());
     this.catcher.addEventListener('mousedown', this.onDragStart);
+  }
+
+  private applyState(state: OverlayState) {
+    this.state = state;
+    this.toolbar.setState(state);
+    const drop = this.dropUid && state.markers.some((m) => m.uid === this.dropUid) ? this.dropUid : null;
+    if (drop) this.dropUid = null;
+    this.markers.set(state.markers, drop);
+  }
+
+  private toggleMode(m: PickMode) {
+    if (this.mode === m) this.stop();
+    else this.start(m);
+  }
+
+  private toggleMarkers() {
+    this.markersHidden = !this.markersHidden;
+    this.markers.setHidden(this.markersHidden);
+    this.toolbar.setMarkersHidden(this.markersHidden);
+  }
+
+  /** 담길 곳: 작성 중 기록이 있으면 그 번호와 다음 문자 */
+  private destination(): { recordId: number; letter: string } | null {
+    const s = this.state;
+    return s?.record && s.nextLetter ? { recordId: s.record.id, letter: s.nextLetter } : null;
+  }
+
+  /** 지금 route 에서 같은 대상을 이미 담았으면 그 마커 */
+  private existingMarker(kind: 'element' | 'text', selector: string, quote?: string): MarkerInfo | null {
+    const route = currentRoute();
+    return (
+      this.state?.markers.find((m) => {
+        if (m.route !== route || m.selector !== selector) return false;
+        if (kind === 'text') return m.kind === 'text' && m.quote === quote;
+        return m.kind === 'element' || m.kind === 'container';
+      }) ?? null
+    );
+  }
+
+  /** 마커를 눌렀을 때(또는 이미 담은 대상을 다시 골랐을 때) 편집 팝오버 */
+  private editMarker(m: MarkerInfo, pin?: HTMLElement) {
+    const p = this.markers.pointOf(m.uid);
+    const el = this.markers.elementOf(m.uid);
+    const r = el?.getBoundingClientRect();
+    const target: Box = r
+      ? { left: r.left, top: r.top, width: r.width, height: r.height }
+      : p
+        ? { left: p.x - 11, top: p.y - 11, width: 22, height: 22 }
+        : pin
+          ? (({ left, top, width, height }) => ({ left, top, width, height }))(pin.getBoundingClientRect())
+          : { left: innerWidth / 2, top: innerHeight / 3, width: 0, height: 0 };
+    this.markers.setEditing(m.uid);
+    const send = (edit: EvidenceEdit) => this.send({ type: 'bn:edit', uid: m.uid, edit }).catch(() => {});
+    this.popover.openEdit({
+      marker: m,
+      recordId: this.state?.record?.id ?? null,
+      x: p?.x ?? target.left + target.width / 2,
+      target,
+      onSave: (note) => send({ action: 'note', note }),
+      onDelete: () => send({ action: 'delete' }),
+      onMove: () => send({ action: 'move' }),
+      onClose: () => this.markers.setEditing(null),
+    });
   }
 
   private toast(text: string, kind: 'ok' | 'warn' = 'ok') {
@@ -268,6 +386,7 @@ class Picker {
       this.catcher.hidden = false;
     }
     window.addEventListener('keydown', this.onKey, true);
+    this.toolbar.setMode(mode);
     this.send({ type: 'bn:mode', mode }).catch(() => {});
   }
 
@@ -282,12 +401,12 @@ class Picker {
     document.documentElement.style.cursor = '';
     this.catcher.hidden = true;
     this.dragRect.hidden = true;
-    this.chip.hidden = true;
-    this.pendingQuote = null;
+    this.popover.close(false);
     this.setCurrent(null);
     this.downPath = [];
     this.lastMouseTarget = null;
     this.mode = null;
+    this.toolbar.setMode(null);
     if (notify) this.send({ type: 'bn:mode', mode: null }).catch(() => {});
   }
 
@@ -314,14 +433,14 @@ class Picker {
     if (e.composedPath().includes(this.host)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (e.type === 'click') {
+    if (e.type === 'click' && !this.popover.isOpen) {
       const t = this.current ?? this.targetFrom(e);
-      if (t) this.captureElement(t);
+      if (t) this.captureElement(t, { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY });
     }
   };
 
   private onKey = (e: KeyboardEvent) => {
-    if (this.isTyping(e)) return;
+    if (this.isTyping(e) || this.popover.isOpen) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -351,11 +470,13 @@ class Picker {
         next = cur.nextElementSibling;
         this.downPath = [];
         break;
-      case 'Enter':
+      case 'Enter': {
         e.preventDefault();
         e.stopImmediatePropagation();
-        this.captureElement(cur);
+        const r = cur.getBoundingClientRect();
+        this.captureElement(cur, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
         return;
+      }
       default:
         return;
     }
@@ -364,26 +485,18 @@ class Picker {
     if (next && !this.host.contains(next)) this.setCurrent(next);
   };
 
+  /** 글자를 드래그해 놓으면 바로 그 자리에 팝오버 */
   private onTextUp = (e: MouseEvent) => {
-    if (e.composedPath().includes(this.host)) return;
+    if (e.composedPath().includes(this.host) || this.popover.isOpen) return;
     setTimeout(() => {
       const sel = window.getSelection();
       const quote = sel ? quoteFromSelection(sel) : null;
-      if (!sel || !quote) {
-        this.chip.hidden = true;
-        this.pendingQuote = null;
-        return;
-      }
+      if (!sel || !quote) return;
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const node = range.commonAncestorContainer;
       const container = (node.nodeType === 1 ? (node as Element) : node.parentElement)!;
-      this.pendingQuote = { quote, rect, container };
-      Object.assign(this.chip.style, {
-        left: `${Math.min(rect.right + 6, innerWidth - 80)}px`,
-        top: `${Math.max(4, rect.top - 30)}px`,
-      });
-      this.chip.hidden = false;
+      this.captureText(quote, rect, container);
     }, 0);
   };
 
@@ -477,14 +590,14 @@ class Picker {
     ctx.drawImage(img, x0 * scale, y0 * scale, sw, sh, 0, 0, canvas.width, canvas.height);
     if (highlight) {
       const k = scale * out;
-      ctx.strokeStyle = '#2563eb';
+      ctx.strokeStyle = '#16a34a';
       ctx.lineWidth = Math.max(2, 2 * k);
       ctx.strokeRect((rect.left - x0) * k, (rect.top - y0) * k, rect.width * k, rect.height * k);
     }
     return blobToDataUrl(await canvas.convertToBlob({ type: 'image/png' }));
   }
 
-  /** 담은 결과는 사이드 패널에만 보여준다. 페이지에는 경고만 띄운다 */
+  /** 패널로 보낸다. 페이지에는 마커(패널이 상태를 돌려줄 때)와 경고만 보인다 */
   private async deliver(evidence: Evidence) {
     try {
       await this.send({ type: 'bn:captured', evidence });
@@ -512,40 +625,88 @@ class Picker {
     };
   }
 
-  private async captureElement(el: Element) {
+  /**
+   * 팝오버를 띄우고 메모를 받는다. 스크린샷은 팝오버를 띄우기 전에(오버레이를 숨기고) 찍어 둔다.
+   * Enter·담기 → 패널로 보냄, Esc·취소·바깥 클릭 → 버림.
+   */
+  private ask(ev: Evidence, head: PopoverHead, x: number, target: Box, pin: { x: number; y: number } | undefined, el?: Element, done?: () => void) {
+    this.setCurrent(null);
+    // 팝오버가 닫힌 뒤 같은 요소 위에서 마우스를 움직여도 하이라이트가 다시 뜨게
+    this.lastMouseTarget = null;
+    this.popover.openNew({
+      head,
+      to: this.destination(),
+      x,
+      target,
+      el,
+      pin,
+      onSubmit: (note) => {
+        this.dropUid = ev.uid;
+        this.deliver({ ...ev, note });
+        done?.();
+      },
+      onCancel: () => done?.(),
+    });
+  }
+
+  private async captureElement(el: Element, at: { x: number; y: number }) {
     if (this.busy) return;
+    const dup = this.existingMarker('element', buildSelector(el));
+    if (dup) {
+      this.setCurrent(null);
+      this.editMarker(dup);
+      return;
+    }
     this.busy = true;
     try {
       const info = await this.describe(el);
       const r = el.getBoundingClientRect();
       const ev: Evidence = { ...this.base(info.table ? 'container' : 'element'), ...info };
+      ev.anchor = { x: clamp01((at.x - r.left) / r.width), y: 0 };
       ev.screenshot = await this.screenshot(r);
-      await this.deliver(ev);
+      const quote = info.table ? `헤더 ${info.table.headers.length} · 보이는 행 ${info.table.visibleRows}` : info.text?.slice(0, 40) || undefined;
+      const box = { left: r.left, top: r.top, width: r.width, height: r.height };
+      this.ask(ev, { name: `<${info.label ?? info.tag}>`, quote, meta: chainText(info.component), src: sourceText(info.component) ?? info.selector }, at.x, box, { x: at.x, y: r.top }, el);
     } finally {
       this.busy = false;
     }
   }
 
-  private async captureText() {
-    const p = this.pendingQuote;
-    if (!p || this.busy) return;
+  private async captureText(quote: NonNullable<ReturnType<typeof quoteFromSelection>>, rect: DOMRect, container: Element) {
+    if (this.busy) return;
+    const dup = this.existingMarker('text', buildSelector(container), quote.exact);
+    if (dup) {
+      window.getSelection()?.removeAllRanges();
+      this.editMarker(dup);
+      return;
+    }
     this.busy = true;
-    this.chip.hidden = true;
     try {
-      const info = await this.describe(p.container);
+      const info = await this.describe(container);
+      const cr = container.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
       const ev: Evidence = {
         ...this.base('text'),
         selector: info.selector,
         tag: info.tag,
         label: info.label,
         component: info.component,
-        quote: p.quote,
+        quote,
+        anchor: { x: clamp01((cx - cr.left) / cr.width), y: 0 },
       };
-      ev.screenshot = await this.screenshot(p.rect);
-      await this.deliver(ev);
-      window.getSelection()?.removeAllRanges();
+      ev.screenshot = await this.screenshot(rect);
+      const box = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      const short = quote.exact.replace(/\s+/g, ' ').trim();
+      this.ask(
+        ev,
+        { name: `<${info.label ?? info.tag}>`, quote: short.length > 40 ? `${short.slice(0, 40)}…` : short, meta: chainText(info.component), src: sourceText(info.component) ?? info.selector },
+        cx,
+        box,
+        { x: cx, y: cr.top },
+        undefined,
+        () => window.getSelection()?.removeAllRanges(),
+      );
     } finally {
-      this.pendingQuote = null;
       this.busy = false;
     }
   }
@@ -559,11 +720,20 @@ class Picker {
         rect: { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) },
         children: elementsInRect(document, { x: r.left, y: r.top, width: r.width, height: r.height }, this.host),
         regionTexts: textsInRect(document, { x: r.left, y: r.top, width: r.width, height: r.height }, this.host),
+        anchor: { x: Math.round(r.left + r.width / 2 + scrollX), y: Math.round(r.top + scrollY) },
       };
       this.catcher.hidden = true;
       ev.screenshot = await this.screenshot(r);
-      this.catcher.hidden = this.mode !== 'region';
-      await this.deliver(ev);
+      const cx = r.left + r.width / 2;
+      this.ask(
+        ev,
+        { name: `영역 ${Math.round(r.width)}×${Math.round(r.height)}`, meta: `안쪽 요소 ${ev.children?.length ?? 0}개` },
+        cx,
+        r,
+        { x: cx, y: r.top },
+        undefined,
+        () => (this.catcher.hidden = this.mode !== 'region'),
+      );
     } finally {
       this.busy = false;
     }
@@ -584,7 +754,7 @@ class Picker {
     return { url: location.href, route, viewportWidth: innerWidth, entries };
   }
 
-  // ---------- 강조 ([페이지로 이동]) ----------
+  // ---------- 강조 (패널 목록 클릭·[페이지로 이동]) ----------
   private pulse(r: Box) {
     const el = document.createElement('div');
     el.className = 'pulse';
@@ -593,14 +763,17 @@ class Picker {
     setTimeout(() => el.remove(), 1200);
   }
 
-  private flash(selector: string): boolean {
+  /** 그 요소로 스크롤한 뒤, 마커가 있으면 마커를 반짝이고 없으면 요소 테두리를 반짝인다 */
+  private flash(selector: string, uid?: string): boolean {
     const el = findBySelector(document, selector);
     if (!el) {
       this.toast('이 페이지에서 요소를 찾지 못했습니다', 'warn');
       return false;
     }
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    setTimeout(() => this.pulse(el.getBoundingClientRect()), 450);
+    setTimeout(() => {
+      if (!(uid && !this.markersHidden && this.markers.target(uid))) this.pulse(el.getBoundingClientRect());
+    }, 450);
     return true;
   }
 }

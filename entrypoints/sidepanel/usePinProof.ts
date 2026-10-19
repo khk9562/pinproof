@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connectFolder, isSupportedUrl, routeOf } from '@/lib/connect';
 import * as db from '@/lib/db';
 import { archiveRecord, deleteRecord, ensurePermission, hasLegacy, listRecords, migrateLegacy, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
 import type { WorkflowStatus } from '@/lib/fs';
 import { copyPrompt, letterFor, padId, recordFileName, sameTarget } from '@/lib/markdown';
-import { NetworkSnapshot, PickMode, ToContent, ToPanel } from '@/lib/messages';
+import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
 import { BugRecord, Evidence, RecordSummary } from '@/lib/types';
 
@@ -37,6 +37,41 @@ function nextLetter(evidence: Evidence[]): string {
   return letterFor(max + 1);
 }
 
+/** 페이지 위 마커로 보여줄 증거(위치가 있는 것만) */
+function markerOf(e: Evidence): MarkerInfo | null {
+  if (e.kind === 'network' || e.kind === 'paste') return null;
+  const c = e.component;
+  return {
+    uid: e.uid,
+    letter: e.letter,
+    kind: e.kind,
+    route: e.route,
+    note: e.note,
+    selector: e.selector,
+    anchor: e.anchor,
+    label: e.label,
+    tag: e.tag,
+    quote: e.quote?.exact,
+    rect: e.rect ? { width: e.rect.width, height: e.rect.height } : undefined,
+    component: c?.chain.length ? c.chain.slice(0, 3).join(' › ') : undefined,
+    source: c?.source ? `${c.source}${c.sourceApprox ? ' 근처' : ''}` : undefined,
+  };
+}
+
+function overlayStateOf(draft: BugRecord | null, inbox: Evidence[]): OverlayState {
+  const markers: MarkerInfo[] = [];
+  for (const e of [...(draft?.evidence ?? []), ...inbox]) {
+    const m = markerOf(e);
+    if (m) markers.push(m);
+  }
+  return {
+    record: draft ? { id: draft.id, title: draft.title, count: draft.evidence.length } : null,
+    nextLetter: draft ? nextLetter(draft.evidence) : null,
+    inboxCount: inbox.length,
+    markers,
+  };
+}
+
 export function usePinProof() {
   const [tabId, setTabId] = useState<number | null>(FIXED_TAB);
   const [tabUrl, setTabUrl] = useState<string>('');
@@ -45,7 +80,6 @@ export function usePinProof() {
   const [draft, setDraft] = useState<BugRecord | null>(null);
   const [inbox, setInbox] = useState<Evidence[]>([]);
   const [records, setRecords] = useState<RecordSummary[]>([]);
-  const [mode, setMode] = useState<PickMode | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'warn' } | null>(null);
   /** 방금 담은 증거. 패널에서 강조해 무엇이 담겼는지 보여준다 */
   const [freshUid, setFreshUid] = useState<string | null>(null);
@@ -58,8 +92,12 @@ export function usePinProof() {
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const draftRef = useRef<BugRecord | null>(null);
   const writeTimer = useRef<number | undefined>(undefined);
-  const pendingFlash = useRef<{ url: string; selector: string } | null>(null);
+  const pendingFlash = useRef<{ url: string; selector: string; uid: string } | null>(null);
+  const portRef = useRef<chrome.runtime.Port | null>(null);
   draftRef.current = draft;
+  const overlayState = useMemo(() => overlayStateOf(draft, inbox), [draft, inbox]);
+  const overlayRef = useRef(overlayState);
+  overlayRef.current = overlayState;
 
   const say = useCallback((text: string, kind: 'ok' | 'warn' = 'ok') => {
     setNotice({ text, kind });
@@ -106,6 +144,48 @@ export function usePinProof() {
     },
     [tabId],
   );
+
+  // ---------- 페이지 위 툴바·마커 (포트) ----------
+  /** 패널이 열려 있는 동안 그 탭의 content script 와 포트를 잇는다. 끊기면 페이지의 툴바·마커가 사라진다 */
+  /** 상태를 보낸다. 포트가 이미 끊겼으면 false */
+  const postState = useCallback((port: chrome.runtime.Port): boolean => {
+    try {
+      port.postMessage({ type: 'bn:state', state: overlayRef.current } satisfies PortToContent);
+      return true;
+    } catch {
+      if (portRef.current === port) portRef.current = null;
+      return false;
+    }
+  }, []);
+
+  const connectPort = useCallback(() => {
+    portRef.current?.disconnect();
+    portRef.current = null;
+    if (tabId === null || !origin) return;
+    try {
+      const port = chrome.tabs.connect(tabId, { name: PANEL_PORT });
+      portRef.current = port;
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        if (portRef.current === port) portRef.current = null;
+      });
+      postState(port);
+    } catch {
+      portRef.current = null;
+    }
+  }, [tabId, origin, postState]);
+
+  useEffect(() => {
+    connectPort();
+    return () => {
+      portRef.current?.disconnect();
+      portRef.current = null;
+    };
+  }, [connectPort]);
+
+  useEffect(() => {
+    if (portRef.current) postState(portRef.current);
+  }, [overlayState, postState]);
 
   // ---------- 앱(origin)별 상태 로드 ----------
   const refreshRecords = useCallback(async () => {
@@ -216,6 +296,10 @@ export function usePinProof() {
     [origin, saveDraft, say],
   );
 
+  /** 페이지 위 편집 팝오버에서 고친 내용 반영 (함수들이 아래에 있어 ref 로 최신을 부른다) */
+  const editRef = useRef<(uid: string, edit: EvidenceEdit) => void>(() => {});
+  const onEdit = useCallback((uid: string, edit: EvidenceEdit) => editRef.current(uid, edit), []);
+
   useEffect(() => {
     const listener = (msg: ToPanel, sender: chrome.runtime.MessageSender, sendResponse: (r?: unknown) => void) => {
       if (sender.tab?.id !== tabId) return;
@@ -223,21 +307,25 @@ export function usePinProof() {
         onCaptured(msg.evidence);
         sendResponse({ ok: true });
       } else if (msg.type === 'bn:mode') {
-        setMode(msg.mode);
+        sendResponse({ ok: true });
+      } else if (msg.type === 'bn:edit') {
+        onEdit(msg.uid, msg.edit);
         sendResponse({ ok: true });
       } else if (msg.type === 'bn:hello') {
         setTabUrl(msg.url);
+        // 페이지를 새로 읽으면 content script 가 새로 뜨므로 포트를 다시 잇는다
+        if (!portRef.current || !postState(portRef.current)) connectPort();
         const pf = pendingFlash.current;
         if (pf && msg.url === pf.url) {
           pendingFlash.current = null;
-          window.setTimeout(() => toContent({ type: 'bn:flash', selector: pf.selector }), 700);
+          window.setTimeout(() => toContent({ type: 'bn:flash', selector: pf.selector, uid: pf.uid }), 700);
         }
         sendResponse({ ok: true });
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, [tabId, onCaptured, toContent]);
+  }, [tabId, onCaptured, onEdit, toContent, connectPort, postState]);
 
   // ---------- 폴더 연결 ----------
   const connect = useCallback(async () => {
@@ -454,45 +542,6 @@ export function usePinProof() {
     [origin, inbox],
   );
 
-  // ---------- 선택 도구 ----------
-  const startMode = useCallback(
-    async (m: PickMode) => {
-      if (mode === m) {
-        await toContent({ type: 'bn:stop' });
-        setMode(null);
-        return;
-      }
-      const res = await toContent({ type: 'bn:start', mode: m });
-      if (!res) say('이 탭에서 선택 도구를 시작하지 못했습니다. 페이지를 새로고침해 주세요.', 'warn');
-      else setMode(m);
-    },
-    [mode, toContent, say],
-  );
-
-  const attachNetwork = useCallback(async () => {
-    const snap = await toContent<NetworkSnapshot>({ type: 'bn:network' });
-    if (!snap) {
-      say('네트워크 기록을 가져오지 못했습니다. 페이지를 새로고침해 주세요.', 'warn');
-      return;
-    }
-    if (snap.entries.length === 0) {
-      say('이 route에서 기록된 API 호출이 없습니다. 새로고침하면 처음 호출부터 기록됩니다.', 'warn');
-      return;
-    }
-    const ev: Evidence = {
-      uid: `${Date.now().toString(36)}-net`,
-      kind: 'network',
-      url: snap.url,
-      route: snap.route,
-      capturedAt: Date.now(),
-      viewportWidth: snap.viewportWidth,
-      note: '',
-      requests: snap.entries,
-    };
-    await onCaptured(ev);
-    say(`네트워크 ${snap.entries.length}건을 담았습니다.`);
-  }, [toContent, onCaptured, say]);
-
   /** 클립보드 붙여넣기·끌어다 놓기로 받은 이미지/텍스트를 증거로 담는다 */
   const addPasted = useCallback(
     async (dt: DataTransfer) => {
@@ -515,15 +564,36 @@ export function usePinProof() {
         return;
       }
       if (ev.url === tabUrl) {
-        const res = await toContent<{ found: boolean }>({ type: 'bn:flash', selector: ev.selector });
+        const res = await toContent<{ found: boolean }>({ type: 'bn:flash', selector: ev.selector, uid: ev.uid });
         if (!res) say('이 탭에서 요소를 찾지 못했습니다.', 'warn');
         return;
       }
-      pendingFlash.current = { url: ev.url, selector: ev.selector };
+      pendingFlash.current = { url: ev.url, selector: ev.selector, uid: ev.uid };
       await chrome.tabs.update(tabId, { url: ev.url });
     },
     [tabId, tabUrl, toContent, say],
   );
+
+  /** 목록에서 고른 증거가 지금 페이지에 있으면 그 마커를 반짝인다(다른 페이지면 아무것도 안 함) */
+  const locate = useCallback(
+    (ev: Evidence) => {
+      if (!ev.selector || ev.route !== routeOf(tabUrl || 'http://x/')) return;
+      toContent({ type: 'bn:flash', selector: ev.selector, uid: ev.uid });
+    },
+    [tabUrl, toContent],
+  );
+
+  editRef.current = (uid, edit) => {
+    const inDraft = !!draftRef.current?.evidence.some((e) => e.uid === uid);
+    if (edit.action === 'note') {
+      if (inDraft) updateEvidence(uid, { note: edit.note });
+      else setInboxNote(uid, edit.note);
+    } else if (edit.action === 'delete') {
+      if (inDraft) removeEvidence(uid);
+      else removeInbox(uid);
+    } else if (inDraft) evidenceToInbox(uid);
+    else inboxToDraft(uid);
+  };
 
   // ---------- 목록 ----------
   const copyRecord = useCallback(
@@ -595,7 +665,6 @@ export function usePinProof() {
     draft,
     inbox,
     records,
-    mode,
     notice,
     freshUid,
     workflow,
@@ -615,10 +684,9 @@ export function usePinProof() {
     inboxToDraft,
     removeInbox,
     setInboxNote,
-    startMode,
-    attachNetwork,
     addPasted,
     goTo,
+    locate,
     copyRecord,
     copyDraft,
     archive,

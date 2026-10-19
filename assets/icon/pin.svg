@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- 지도 핀: 그린 몸통 + 흰 테두리(어두운 툴바에서도 윤곽이 보이게) + 연두 원 안에 체크(증거 확인) -->
+  <path d="M64 6C38.6 6 18 26.3 18 51.4c0 30.7 37.6 63.7 42.6 68a5.2 5.2 0 0 0 6.8 0C72.4 115.1 110 82.1 110 51.4 110 26.3 89.4 6 64 6Z"
+        fill="#16a34a" stroke="#ffffff" stroke-width="7" stroke-linejoin="round"/>
+  <circle cx="64" cy="51" r="25" fill="#a3e635"/>
+  <path d="M52.5 51.5l8 8 15-16" fill="none" stroke="#1a2e05" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
