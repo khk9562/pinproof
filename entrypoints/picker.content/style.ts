@@ -9,13 +9,32 @@ export const OVERLAY_CSS = `
   --bg: #ffffff; --surface: #f5f8fc; --surface-2: #edf2f8; --border: #dde5ef;
   --text: #172033; --text-2: #4b5b73; --text-3: #8593a8;
   --navy: #1e3a8a; --navy-strong: #172554; --navy-soft: rgba(30,58,138,.10);
-  --sky: #38bdf8; --sky-soft: rgba(56,189,248,.20); --on-sky: #0b1b3f;
-  --gray-dot: #9ca3af; --red: #dc2626; --amber: #b45309;
+  --sky: #38bdf8; --sky-soft: rgba(56,189,248,.20); --on-sky: #0b1b3f; --on-sky-soft: #0b1b3f;
+  --on-navy: #ffffff; --gray-dot: #9ca3af; --red: #dc2626; --amber: #b45309; --pin-bottom: #1e3a8a; --pin-needle: #0b1b3f;
   --radius-s: 6px; --radius: 8px; --radius-l: 12px; --pill: 999px;
   --shadow-float: 0 8px 28px rgba(23,32,51,.14), 0 0 0 1px rgba(23,32,51,.06);
   --sans: ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --t: .15s ease; --ease: cubic-bezier(.4,0,.2,1);
+}
+/* 다크(딥 네이비 + 시안): 기본은 시스템 설정을 따르고, 사용자가 고르면 host 의 data-theme 가 이긴다 */
+@media (prefers-color-scheme: dark) {
+  :host(:not([data-theme="light"])) {
+    --bg: #081430; --surface: #0d1d40; --surface-2: #13284f; --border: #1d3766;
+    --text: #eef5ff; --text-2: #a9c0e4; --text-3: #6b88b6;
+    --navy: #2f7bff; --navy-strong: #1d62e8; --navy-soft: rgba(47,123,255,.20);
+    --sky: #4cc9ff; --sky-soft: rgba(76,201,255,.18); --on-sky: #0b1b3f; --on-sky-soft: #8fdcff;
+    --gray-dot: #6b84aa; --red: #f87171; --amber: #f59e0b; --pin-bottom: #2f7bff; --pin-needle: #a9c0e4;
+    --shadow-float: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08);
+  }
+}
+:host([data-theme="dark"]) {
+    --bg: #081430; --surface: #0d1d40; --surface-2: #13284f; --border: #1d3766;
+    --text: #eef5ff; --text-2: #a9c0e4; --text-3: #6b88b6;
+    --navy: #2f7bff; --navy-strong: #1d62e8; --navy-soft: rgba(47,123,255,.20);
+    --sky: #4cc9ff; --sky-soft: rgba(76,201,255,.18); --on-sky: #0b1b3f; --on-sky-soft: #8fdcff;
+    --gray-dot: #6b84aa; --red: #f87171; --amber: #f59e0b; --pin-bottom: #2f7bff; --pin-needle: #a9c0e4;
+    --shadow-float: 0 8px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08);
 }
 * { box-sizing: border-box; font-family: var(--sans); }
 [hidden] { display: none !important; }
@@ -35,14 +54,14 @@ kbd {
 }
 .label {
   position: fixed; max-width: 360px; padding: 2px 6px; border-radius: var(--radius-s);
-  background: var(--navy-strong); color: var(--bg); font: 500 11px/1.4 var(--mono);
+  background: var(--navy-strong); color: var(--on-navy); font: 500 11px/1.4 var(--mono);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
 }
 .catcher { position: fixed; inset: 0; cursor: crosshair; pointer-events: auto; background: rgba(23,32,51,.03); }
 .drag { position: fixed; border: 1.5px dashed var(--navy); background: var(--sky-soft); }
 .drag::after {
   content: attr(data-size); position: absolute; right: 0; bottom: -22px; padding: 2px 6px;
-  border-radius: var(--radius-s); background: var(--navy-strong); color: var(--bg); font: 500 11px/1.4 var(--mono);
+  border-radius: var(--radius-s); background: var(--navy-strong); color: var(--on-navy); font: 500 11px/1.4 var(--mono);
 }
 /* 팝오버 대상 */
 .sel { position: fixed; border: 2px solid var(--navy); border-radius: 3px; background: var(--sky-soft); pointer-events: none; }
@@ -70,7 +89,7 @@ kbd {
 .logo { width: 22px; height: 22px; display: grid; place-items: center; margin: 0 4px 0 2px; flex: none; }
 .logo svg { display: block; overflow: visible; }
 .pp-body { stroke: var(--bg); stroke-width: 6; stroke-linejoin: round; transform-box: fill-box; transform-origin: center; }
-.pp-needle { fill: none; stroke: var(--on-sky); stroke-width: 7; stroke-linecap: round; }
+.pp-needle { fill: none; stroke: var(--pin-needle); stroke-width: 7; stroke-linecap: round; }
 .vsep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; flex: none; }
 .tbtn {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 0;
@@ -100,7 +119,7 @@ kbd {
 /* 기록 칩: 하늘색은 "지금 담기는 곳"에만 */
 .rec {
   display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; margin-left: 2px;
-  border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky); font-size: 12px; font-weight: 500; white-space: nowrap;
+  border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky-soft); font-size: 12px; font-weight: 500; white-space: nowrap;
 }
 .rec b { font-family: var(--mono); font-weight: 600; }
 .rec.loose { background: var(--surface-2); color: var(--text-2); }
@@ -124,7 +143,7 @@ kbd {
 }
 .pin:hover { transform: scale(1.15); }
 .pin.loose { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--gray-dot); font-size: 0; }
-.pin.temp { background: var(--bg); color: var(--navy-strong); box-shadow: inset 0 0 0 1.5px var(--navy), 0 0 0 2px var(--bg), var(--shadow-float); }
+.pin.temp { background: var(--bg); color: var(--navy); box-shadow: inset 0 0 0 1.5px var(--navy), 0 0 0 2px var(--bg), var(--shadow-float); }
 .pin.temp.loose { background: var(--gray-dot); box-shadow: 0 0 0 2px var(--bg), var(--shadow-float); }
 .pin.editing { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--navy), var(--shadow-float); }
 /* 툴팁은 마커 위로 — 아래로 띄우면 잡은 값을 가린다 */
@@ -169,11 +188,11 @@ kbd {
 .p-name .q { font-weight: 400; color: var(--text-2); }
 .p-meta { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .p-src { font: 11px/1.4 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.p-to { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px 0 2px; border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky); font-size: 12px; }
+.p-to { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px 0 2px; border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky-soft); font-size: 12px; }
 .p-to b { font-family: var(--mono); font-weight: 600; }
 .p-to.loose { background: var(--surface-2); color: var(--text-2); padding-left: 7px; }
 .lt { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--sky); color: var(--on-sky); font: 700 11px/1 var(--sans); flex: none; }
-.lt.temp { background: var(--bg); color: var(--navy-strong); box-shadow: inset 0 0 0 1.5px var(--navy); }
+.lt.temp { background: var(--bg); color: var(--navy); box-shadow: inset 0 0 0 1.5px var(--navy); }
 .lt.loose { width: 10px; height: 10px; background: var(--gray-dot); margin: 4px; }
 .field { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); transition: border-color var(--t), box-shadow var(--t); }
 .field:focus-within { border-color: var(--navy); box-shadow: 0 0 0 3px var(--navy-soft); }
@@ -189,7 +208,7 @@ kbd {
 .vw { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font: 11px var(--mono); }
 .btn-ghost { height: 30px; padding: 0 12px; border: 0; border-radius: var(--pill); background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; transition: background var(--t), color var(--t); }
 .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
-.btn-main { height: 30px; padding: 0 16px; border: 0; border-radius: var(--pill); background: var(--navy); color: var(--bg); font-size: 13px; font-weight: 600; transition: background var(--t); }
+.btn-main { height: 30px; padding: 0 16px; border: 0; border-radius: var(--pill); background: var(--navy); color: var(--on-navy); font-size: 13px; font-weight: 600; transition: background var(--t); }
 .btn-main:hover { background: var(--navy-strong); }
 .btn-main:disabled { background: var(--surface-2); color: var(--text-3); cursor: default; }
 .btn-del { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border: 0; border-radius: var(--pill); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; transition: background var(--t), color var(--t); }

@@ -31,6 +31,7 @@ import { ComponentInfo, Evidence, NetworkEntry } from '@/lib/types';
 import { Markers } from './markers';
 import { Box, Popover, PopoverHead } from './popover';
 import { OVERLAY_CSS } from './style';
+import { applyTheme, loadTheme, onThemeChange } from '@/lib/theme';
 import { Toolbar } from './toolbar';
 
 export default defineContentScript({
@@ -236,6 +237,9 @@ class Picker {
     this.host = document.createElement('pinproof-overlay');
     this.host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
     this.root = this.host.attachShadow({ mode: 'open' });
+    // 테마: 패널에서 고른 값(시스템·라이트·다크)을 따른다
+    loadTheme().then((p) => applyTheme(this.host, p));
+    onThemeChange((p) => applyTheme(this.host, p));
     this.root.innerHTML = `
       <style>${OVERLAY_CSS}</style>
       <div class="box" hidden></div>

@@ -1,15 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
+import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { Evidence, KIND_LABEL, RECORD_TYPES, RecordSummary } from '@/lib/types';
 import { PinProof, usePinProof } from './usePinProof';
 
+/** 테마 설정(시스템·라이트·다크). 페이지 위 오버레이도 같은 값을 따른다 */
+function useThemePref(): [ThemePref, () => void] {
+  const [pref, setPref] = useState<ThemePref>('system');
+  useEffect(() => {
+    loadTheme().then(setPref);
+    return onThemeChange(setPref);
+  }, []);
+  useEffect(() => applyTheme(document.documentElement, pref), [pref]);
+  const cycle = () => {
+    const next = nextTheme(pref);
+    setPref(next);
+    chrome.storage.local.set({ [THEME_KEY]: next }).catch(() => {});
+  };
+  return [pref, cycle];
+}
+
 export function App() {
   const bn = usePinProof();
+  const theme = useThemePref();
 
   if (!bn.origin) {
     return (
       <div className="panel">
-        <Brand />
+        <Brand theme={theme} />
         <div className="empty">
           <p className="empty-title">localhost 페이지에서 동작합니다</p>
           <p className="muted">개발 중인 앱 탭(http://localhost:포트 또는 127.0.0.1)을 열면 여기에 기록 도구가 나타납니다.</p>
@@ -20,7 +38,7 @@ export function App() {
 
   return (
     <div className="panel">
-      <ConnectionBar bn={bn} />
+      <ConnectionBar bn={bn} theme={theme} />
       {bn.connection === 'granted' && (
         <>
           {bn.draft ? <DraftCard bn={bn} /> : <NoDraft bn={bn} />}
@@ -57,7 +75,7 @@ function PinLogo({ size = 18 }: { size?: number }) {
       <defs>
         <linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="74">
           <stop offset="0" stopColor="#38bdf8" />
-          <stop offset="1" stopColor="#1e3a8a" />
+          <stop offset="1" style={{ stopColor: 'var(--pin-bottom)' }} />
         </linearGradient>
       </defs>
       <g transform="translate(64 64) rotate(45) scale(.9) translate(-64 -64)">
@@ -69,15 +87,44 @@ function PinLogo({ size = 18 }: { size?: number }) {
 }
 
 /** 제목 글자는 Chrome 사이드 패널 머리가 이미 보여주므로 아이콘만 둔다 */
-function Brand() {
+function Brand({ theme }: { theme: [ThemePref, () => void] }) {
   return (
     <header className="brand">
       <PinLogo />
+      <ThemeButton theme={theme} />
     </header>
   );
 }
 
-function ConnectionBar({ bn }: { bn: PinProof }) {
+const THEME_ICON: Record<ThemePref, ReactNode> = {
+  system: (
+    <>
+      <rect x="2" y="3" width="12" height="8" rx="1.3" />
+      <path d="M6 13.5h4M8 11v2.5" />
+    </>
+  ),
+  light: (
+    <>
+      <circle cx="8" cy="8" r="2.8" />
+      <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+    </>
+  ),
+  dark: <path d="M13 9.6A5.6 5.6 0 1 1 6.4 3a4.6 4.6 0 0 0 6.6 6.6z" />,
+};
+
+/** 테마 전환: 시스템 설정 → 라이트 → 다크 */
+function ThemeButton({ theme: [pref, cycle] }: { theme: [ThemePref, () => void] }) {
+  const label = `테마: ${THEME_LABEL[pref]} · 누르면 ${THEME_LABEL[nextTheme(pref)]}`;
+  return (
+    <button className="theme-btn" onClick={cycle} title={label} aria-label={label} data-theme-pref={pref}>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {THEME_ICON[pref]}
+      </svg>
+    </button>
+  );
+}
+
+function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => void] }) {
   const host = bn.origin!.replace(/^https?:\/\//, '');
   return (
     <section className="conn">
@@ -93,6 +140,7 @@ function ConnectionBar({ bn }: { bn: PinProof }) {
           </span>
         )}
         <span className={`dot ${bn.connection}`} title={bn.connection === 'granted' ? '연결됨' : '권한 필요'} />
+        <ThemeButton theme={theme} />
       </div>
       {bn.connection === 'none' && (
         <button className="btn primary block" onClick={bn.connect}>

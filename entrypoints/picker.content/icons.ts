@@ -8,7 +8,7 @@ const line = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-lineca
 /** 익스텐션 아이콘과 같은 압정(assets/icon/pin.svg). 머리(하늘색) → 받침(남색) 그라데이션, 모드 중에는 실루엣이 숨쉰다 */
 export const PIN_LOGO = svg(
   '<defs><linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="74">' +
-    '<stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient></defs>' +
+    '<stop offset="0" stop-color="#38bdf8"/><stop offset="1" style="stop-color: var(--pin-bottom)"/></linearGradient></defs>' +
     '<g transform="translate(64 64) rotate(45) scale(.9) translate(-64 -64)">' +
     '<path class="pp-needle" d="M64 70V121"/>' +
     '<path class="pp-body" fill="url(#pp-grad)" d="M46 6H82A10 10 0 0 1 82 26H80L77 54H92A10 10 0 0 1 92 74H36A10 10 0 0 1 36 54H51L48 26H46A10 10 0 0 1 46 6Z"/></g>',
