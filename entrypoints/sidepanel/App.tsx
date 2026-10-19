@@ -115,8 +115,8 @@ function ConnectionBar({ bn }: { bn: PinProof }) {
       )}
       {bn.connection === 'none' && (
         <p className="muted small">
-          고른 폴더에 <code>.pinproof/</code>와 <code>/pinproof</code> 커맨드를 만들고, git 저장소면 <code>.gitignore</code>에
-          추가합니다. 만들기 전에 목록을 보여드립니다.
+          고른 폴더에 <code>.pinproof/</code>를 만들고, git 저장소면 <code>.git/info/exclude</code>에 추가합니다(팀{' '}
+          <code>.gitignore</code>는 건드리지 않음). 만들기 전에 목록을 보여드립니다.
         </p>
       )}
     </section>

@@ -1,4 +1,4 @@
-import { appendGitignore, COMMAND_MD, removeLegacyGitignore, WORKFLOW_MD, WORKFLOW_VERSION, workflowVersionOf } from './templates';
+import { appendExclude, WORKFLOW_MD, WORKFLOW_VERSION, workflowVersionOf } from './templates';
 import {
   idFromFileName,
   mergeWithExisting,
@@ -88,9 +88,10 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 export interface SetupPlan {
   workflow: boolean;
-  command: boolean;
-  gitignore: boolean;
-  hasGit: boolean;
+  /** .git/info/exclude 에 .pinproof/ 를 추가할지 */
+  exclude: boolean;
+  /** repo: .git 폴더가 있음 · worktree: .git 이 파일(git 워크트리, exclude 는 메인 저장소 쪽에 있어 쓸 수 없음) · none: git 아님 */
+  git: 'repo' | 'worktree' | 'none';
   /** 이전 이름의 .bugnotes/ 가 있어 .pinproof/ 로 옮길지 */
   legacy: boolean;
 }
@@ -98,14 +99,11 @@ export interface SetupPlan {
 /** 폴더 연결 시 생성·수정할 파일 목록(동의 다이얼로그용) */
 export async function planSetup(root: Dir): Promise<SetupPlan> {
   const notes = await getDir(root, [NOTES_DIR], false);
-  const commands = await getDir(root, ['.claude', 'commands'], false);
-  const hasGit = await exists(root, '.git', 'directory');
-  const gitignore = await readText(root, '.gitignore');
+  const git = (await exists(root, '.git', 'directory')) ? 'repo' : (await exists(root, '.git', 'file')) ? 'worktree' : 'none';
   return {
     workflow: !notes || !(await exists(notes, 'WORKFLOW.md', 'file')),
-    command: !commands || !(await exists(commands, 'pinproof.md', 'file')),
-    gitignore: hasGit && appendGitignore(gitignore) !== null,
-    hasGit,
+    exclude: git === 'repo' && appendExclude(await readExclude(root)) !== null,
+    git,
     legacy: await exists(root, LEGACY_DIR, 'directory'),
   };
 }
@@ -115,14 +113,22 @@ export async function applySetup(root: Dir): Promise<void> {
   const notes = (await getDir(root, [NOTES_DIR], true))!;
   // 이미 있으면 덮어쓰지 않는다(교체는 패널의 [업데이트] 버튼으로만)
   if (!(await exists(notes, 'WORKFLOW.md', 'file'))) await writeFile(notes, 'WORKFLOW.md', WORKFLOW_MD);
-  const commands = (await getDir(root, ['.claude', 'commands'], true))!;
-  if (!(await exists(commands, 'pinproof.md', 'file'))) {
-    await writeFile(commands, 'pinproof.md', COMMAND_MD);
-  }
-  if (await exists(root, '.git', 'directory')) {
-    const next = appendGitignore(await readText(root, '.gitignore'));
-    if (next !== null) await writeFile(root, '.gitignore', next);
-  }
+  await ensureExclude(root);
+}
+
+async function readExclude(root: Dir): Promise<string | null> {
+  const info = await getDir(root, ['.git', 'info'], false);
+  return info ? readText(info, 'exclude') : null;
+}
+
+/**
+ * .git/info/exclude 에 .pinproof/ 를 추가한다(이미 있으면 그대로).
+ * 팀이 함께 쓰는 .gitignore 와 프로젝트의 .claude/commands/ 는 건드리지 않는다.
+ */
+async function ensureExclude(root: Dir): Promise<void> {
+  if (!(await exists(root, '.git', 'directory'))) return;
+  const next = appendExclude(await readExclude(root));
+  if (next !== null) await writeFile((await getDir(root, ['.git', 'info'], true))!, 'exclude', next);
 }
 
 async function listEntries(dir: Dir): Promise<[string, FileSystemHandle][]> {
@@ -152,7 +158,8 @@ export async function hasLegacy(root: Dir): Promise<boolean> {
  * 이전 이름의 .bugnotes/ 를 .pinproof/ 로 옮긴다.
  * - 기록·스크린샷·보관함을 복사(이미 있는 파일은 덮어쓰지 않음). WORKFLOW.md는 새 버전을 쓴다(옛 파일은 .bugnotes 경로를 가리킴)
  * - 같은 번호의 기록이 양쪽에 다르게 있으면 그 기록은 옮기지 않고 skipped로 알려준다
- * - 모두 옮겼으면 .bugnotes/ 와 옛 커맨드(/bugnotes)를 지우고 .gitignore 블록을 바꾼다
+ * - 모두 옮겼으면 .bugnotes/ 와 옛 커맨드(/bugnotes)를 지우고, .git/info/exclude 에 .pinproof/ 를 추가한다
+ *   (.gitignore 의 옛 블록은 팀 파일이라 건드리지 않는다)
  */
 export async function migrateLegacy(root: Dir): Promise<{ skipped: number[] }> {
   const legacy = await getDir(root, [LEGACY_DIR], false);
@@ -182,17 +189,10 @@ export async function migrateLegacy(root: Dir): Promise<{ skipped: number[] }> {
   await copyTree(legacy, notes, (p) => skipPaths.has(p));
   if (!(await exists(notes, 'WORKFLOW.md', 'file'))) await writeFile(notes, 'WORKFLOW.md', WORKFLOW_MD);
 
-  const commands = (await getDir(root, ['.claude', 'commands'], true))!;
-  if (!(await exists(commands, 'pinproof.md', 'file'))) await writeFile(commands, 'pinproof.md', COMMAND_MD);
-  const oldCommand = await readText(commands, LEGACY_COMMAND);
-  if (oldCommand?.includes('.bugnotes/WORKFLOW.md')) await commands.removeEntry(LEGACY_COMMAND);
-
-  const gitignore = await readText(root, '.gitignore');
-  if (gitignore !== null && (await exists(root, '.git', 'directory'))) {
-    const cleaned = removeLegacyGitignore(gitignore);
-    const next = appendGitignore(cleaned) ?? cleaned;
-    if (next !== gitignore) await writeFile(root, '.gitignore', next);
-  }
+  const commands = await getDir(root, ['.claude', 'commands'], false);
+  const oldCommand = commands && (await readText(commands, LEGACY_COMMAND));
+  if (oldCommand?.includes('.bugnotes/WORKFLOW.md')) await commands!.removeEntry(LEGACY_COMMAND);
+  await ensureExclude(root);
 
   if (skipped.length === 0) await root.removeEntry(LEGACY_DIR, { recursive: true });
   return { skipped };

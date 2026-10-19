@@ -296,7 +296,7 @@ export function usePinProof() {
     const h = handleRef.current;
     if (!h) return;
     const ok = window.confirm(
-      '이전 이름(BugNotes)의 .bugnotes/ 폴더를 .pinproof/ 로 옮깁니다.\n\n- 기록·스크린샷·보관함 복사 (이미 있는 파일은 덮어쓰지 않음)\n- 모두 옮기면 .bugnotes/ 와 이전 커맨드 /bugnotes 삭제, .gitignore 줄 교체\n\n계속할까요?',
+      '이전 이름(BugNotes)의 .bugnotes/ 폴더를 .pinproof/ 로 옮깁니다.\n\n- 기록·스크린샷·보관함 복사 (이미 있는 파일은 덮어쓰지 않음)\n- 모두 옮기면 .bugnotes/ 와 이전 커맨드 /bugnotes 삭제, .git/info/exclude 에 .pinproof/ 추가\n\n계속할까요?',
     );
     if (!ok) return;
     try {

@@ -27,8 +27,10 @@ npm run build
 1. 개발 중인 앱(`http://localhost:포트`)을 열고 툴바의 PinProof 아이콘(또는 `Alt+Shift+B`)으로 사이드 패널을 엽니다.
    - 아이콘으로 패널을 열어야 그 탭에서 **스크린샷**이 허용됩니다(Chrome의 `activeTab` 규칙). 같은 앱 안에서 페이지를 옮겨도 유지됩니다.
 2. **프로젝트 폴더 연결** → 앱의 저장소 루트 폴더를 고릅니다. 만들 파일 목록을 보여주고 동의를 받습니다.
-   - `.pinproof/WORKFLOW.md` (공통 처리 절차), `.claude/commands/pinproof.md` (`/pinproof` 커맨드)
-   - git 저장소면 `.gitignore`에 둘 다 추가
+   - `.pinproof/WORKFLOW.md` (공통 처리 절차)
+   - git 저장소면 `.git/info/exclude`에 `.pinproof/` 추가. 이 컴퓨터에만 적용되고 모든 워크트리가 함께 씁니다. 팀이 함께 쓰는 `.gitignore`와 프로젝트의 `.claude/commands/`는 건드리지 않습니다
+   - git 워크트리 폴더(`.git`이 파일)를 고르면 무시 설정을 쓸 수 없으니, 메인 저장소의 `.git/info/exclude`에 `.pinproof/`가 있는지 확인하세요
+   - `/pinproof` 커맨드는 아래 "[/pinproof 커맨드 설치](#pinproof-커맨드-설치-한-번만)"대로 개인 설정에 한 번 둡니다
 3. **+ 새 기록** → 제목·유형·연관·메모를 쓰고 증거를 담습니다.
 
 | 버튼 | 단축키 (페이지에서) | 동작 |
@@ -43,6 +45,16 @@ npm run build
    - 담은 증거는 사이드 패널에 카드로 나타납니다(방금 담은 카드는 강조). 카드에서 선택된 요소 이름·컴포넌트·selector를 확인하고, 잘못 담았으면 카드 오른쪽 위 **✕**로 지웁니다.
 4. 테이블처럼 여러 행이 있는 값은 셀을 잡고 `↑`로 테이블/컨테이너까지 올라가 담으면, 헤더·보이는 행 수·컴포넌트 위치가 기록됩니다. 합계 비교 같은 판단은 Claude가 코드와 API를 직접 추적해서 합니다.
 5. 다 모았으면 **작성 종료**. 작성 중인 기록이 없을 때 담은 증거는 **미분류**에 모였다가 나중에 기록으로 옮길 수 있습니다.
+
+### /pinproof 커맨드 설치 (한 번만)
+
+커맨드는 프로젝트가 아니라 개인 설정(`~/.claude/commands/`)에 둡니다. 팀 저장소에 흔적이 남지 않고, 어느 프로젝트·워크트리에서든 `.pinproof/`가 있으면 동작합니다.
+
+```bash
+mkdir -p ~/.claude/commands && printf '%s\n' '---' 'description: PinProof 기록 건 목록 보기(인자 없음) 또는 처리(번호)' 'argument-hint: "[기록 번호]"' '---' '' '`.pinproof/WORKFLOW.md`를 읽고 그 절차를 그대로 따른다.' '' '인자: $ARGUMENTS' > ~/.claude/commands/pinproof.md
+```
+
+예전 버전으로 연결한 프로젝트에는 `.claude/commands/pinproof.md`와 `.gitignore`의 `# PinProof` 블록이 남아 있을 수 있습니다. 익스텐션은 이것들을 지우지 않습니다(팀 파일일 수 있어서). 필요 없으면 직접 지우고 `.git/info/exclude`에 `.pinproof/`를 넣으세요.
 
 ### Claude Code에 넘기기
 
@@ -63,7 +75,7 @@ claude.ai나 다른 에이전트에는 패널의 **복사** 버튼으로 프롬�
 
 ### 이전 이름(BugNotes)에서 옮겨오기
 
-예전 버전으로 만든 `.bugnotes/` 폴더가 있는 프로젝트는 폴더를 연결할 때 확인 목록에 "옮기기"가 함께 표시되고, 이미 연결된 경우 패널에 **[옮기기]** 버튼이 뜹니다. 기록·스크린샷·보관함을 `.pinproof/`로 복사하고(덮어쓰지 않음), 모두 옮기면 `.bugnotes/`와 `/bugnotes` 커맨드를 지우고 `.gitignore`를 바꿉니다.
+예전 버전으로 만든 `.bugnotes/` 폴더가 있는 프로젝트는 폴더를 연결할 때 확인 목록에 "옮기기"가 함께 표시되고, 이미 연결된 경우 패널에 **[옮기기]** 버튼이 뜹니다. 기록·스크린샷·보관함을 `.pinproof/`로 복사하고(덮어쓰지 않음), 모두 옮기면 `.bugnotes/`와 `/bugnotes` 커맨드를 지우고 `.git/info/exclude`에 `.pinproof/`를 넣습니다(`.gitignore`의 옛 `# BugNotes` 줄은 건드리지 않음).
 
 ## 저장 구조
 
@@ -74,7 +86,9 @@ claude.ai나 다른 에이전트에는 패널의 **복사** 버튼으로 프롬�
 │  ├ 012-대시보드-총합-불일치.md     # 기록 1건 = md 1개
 │  ├ assets/012/A.png …
 │  └ archive/
-└ .claude/commands/pinproof.md
+└ .git/info/exclude                 # ".pinproof/" 한 줄 (내 컴퓨터에만)
+
+~/.claude/commands/pinproof.md      # /pinproof 커맨드 (개인 설정)
 ```
 
 - md의 `## 처리 기록` 아래는 익스텐션이 절대 덮어쓰지 않습니다. 기록을 다시 열어 증거를 추가해도 Claude의 처리 기록은 남습니다.

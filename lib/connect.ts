@@ -3,11 +3,14 @@ import { applySetup, planSetup, SetupPlan } from './fs';
 
 export function describePlan(plan: SetupPlan): string[] {
   const items: string[] = [];
-  if (plan.legacy) items.push('이전 이름의 .bugnotes/ 기록·스크린샷을 .pinproof/ 로 옮기고, 이전 커맨드(/bugnotes)와 .gitignore 줄 정리');
+  if (plan.legacy) items.push('이전 이름의 .bugnotes/ 기록·스크린샷을 .pinproof/ 로 옮기고, 이전 커맨드(/bugnotes) 정리');
   if (plan.workflow) items.push('.pinproof/WORKFLOW.md 생성 (공통 처리 절차)');
-  if (plan.command) items.push('.claude/commands/pinproof.md 생성 (/pinproof 커맨드)');
-  if (plan.gitignore) items.push('.gitignore에 .pinproof/ 와 커맨드 파일 추가');
-  if (!plan.hasGit) items.push('(git 저장소가 아니어서 .gitignore는 건드리지 않습니다)');
+  if (plan.exclude) items.push('.git/info/exclude 에 .pinproof/ 추가 (이 컴퓨터에만 적용, 팀 .gitignore 는 건드리지 않음)');
+  if (plan.git === 'worktree') {
+    items.push('(git 워크트리라 무시 설정을 쓰지 않습니다. 메인 저장소의 .git/info/exclude 에 .pinproof/ 가 있는지 확인하세요)');
+  }
+  if (plan.git === 'none') items.push('(git 저장소가 아니어서 무시 설정은 건드리지 않습니다)');
+  items.push('(/pinproof 커맨드는 프로젝트에 만들지 않습니다. ~/.claude/commands/pinproof.md 에 한 번 두세요. README 참고)');
   return items;
 }
 
@@ -22,7 +25,7 @@ export async function connectFolder(
 ): Promise<boolean> {
   const plan = await planSetup(root);
   const items = describePlan(plan);
-  if (plan.workflow || plan.command || plan.gitignore || plan.legacy) {
+  if (plan.workflow || plan.exclude || plan.legacy) {
     if (!(await confirm(items, root.name))) return false;
     await applySetup(root);
   }

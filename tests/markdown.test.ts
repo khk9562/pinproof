@@ -10,7 +10,7 @@ import {
   recordFileName,
   renderRecord,
 } from '../lib/markdown';
-import { appendGitignore, GITIGNORE_BLOCK } from '../lib/templates';
+import { appendExclude, EXCLUDE_BLOCK } from '../lib/templates';
 import { BugRecord } from '../lib/types';
 
 const record: BugRecord = {
@@ -153,11 +153,15 @@ describe('파일명·문자·프롬프트', () => {
   });
 });
 
-describe('appendGitignore', () => {
-  it('이미 있으면 null, 없으면 블록 추가', () => {
-    expect(appendGitignore(null)).toBe(GITIGNORE_BLOCK);
-    expect(appendGitignore('node_modules')).toBe(`node_modules\n\n${GITIGNORE_BLOCK}`);
-    expect(appendGitignore(`a\n${GITIGNORE_BLOCK}`)).toBeNull();
+describe('appendExclude', () => {
+  it('없으면 블록 추가, .pinproof 줄이 이미 있으면 null', () => {
+    expect(appendExclude(null)).toBe(EXCLUDE_BLOCK);
+    expect(appendExclude('node_modules')).toBe(`node_modules\n\n${EXCLUDE_BLOCK}`);
+    expect(appendExclude('node_modules\n')).toBe(`node_modules\n\n${EXCLUDE_BLOCK}`);
+    expect(appendExclude(`a\n${EXCLUDE_BLOCK}`)).toBeNull();
+    // 사용자가 직접 다른 주석과 함께 적어 둔 줄도 인정한다
+    expect(appendExclude('# 개인 도구\n  /.pinproof  \n')).toBeNull();
+    expect(appendExclude('.pinproof-old/')).not.toBeNull();
   });
 });
 

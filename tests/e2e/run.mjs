@@ -96,10 +96,24 @@ try {
     }, p);
 
   // ---------- 연결 ----------
+  // git 저장소처럼 보이게 .git/info/exclude 와 팀 .gitignore 를 미리 둔다
+  await panel.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const write = async (dir, name, text) => {
+      const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await w.write(text);
+      await w.close();
+    };
+    const git = await root.getDirectoryHandle('.git', { create: true });
+    await write(await git.getDirectoryHandle('info', { create: true }), 'exclude', '# git ls-files --others\n*~\n');
+    await write(root, '.gitignore', 'node_modules\n');
+  });
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
   await panel.getByText('작성 중인 기록이 없습니다').waitFor();
   check((await readOpfs('.pinproof/WORKFLOW.md'))?.includes('# PinProof 처리 절차'), 'WORKFLOW.md 생성');
-  check((await readOpfs('.claude/commands/pinproof.md'))?.includes('$ARGUMENTS'), '/pinproof 커맨드 생성');
+  check((await readOpfs('.claude/commands/pinproof.md')) === null, '프로젝트에 /pinproof 커맨드를 만들지 않음');
+  check((await readOpfs('.git/info/exclude')) === '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n', '.git/info/exclude 에 .pinproof/ 추가');
+  check((await readOpfs('.gitignore')) === 'node_modules\n', '팀 .gitignore 는 그대로');
   check((await readOpfs('.pinproof/WORKFLOW.md')).startsWith('<!-- pinproof-workflow v'), 'WORKFLOW.md에 버전 표시');
   check(!(await panel.locator('.wf-update').isVisible()), '최신 버전이면 업데이트 버튼 없음');
   // 옛 버전(버전 표시 없음)으로 바꿔두면 [업데이트] 버튼이 뜨고, 누르면 교체된다
@@ -356,11 +370,13 @@ try {
     oldCmd: await readOpfs('.claude/commands/bugnotes.md'),
     newCmd: await readOpfs('.claude/commands/pinproof.md'),
     gitignore: await readOpfs('.gitignore'),
+    exclude: await readOpfs('.git/info/exclude'),
   };
   check(migrated.record?.includes('- 옛 처리') && migrated.asset === 'A.png', '옮기기: 기록·처리 기록·스크린샷 이동');
-  check(migrated.legacy === null && migrated.oldCmd === null && !!migrated.newCmd, '옮기기: .bugnotes/ 와 /bugnotes 커맨드 정리');
+  check(migrated.legacy === null && migrated.oldCmd === null && migrated.newCmd === null, '옮기기: .bugnotes/ 와 /bugnotes 커맨드 정리, 새 커맨드는 만들지 않음');
   check(!migrated.workflow.includes('옛 절차'), '옮기기: WORKFLOW.md는 새 버전 유지');
-  check(!migrated.gitignore.includes('.bugnotes/') && migrated.gitignore.includes('.pinproof/'), `옮기기: .gitignore 교체`);
+  check(migrated.gitignore.includes('# BugNotes') && !migrated.gitignore.includes('.pinproof/'), '옮기기: 팀 .gitignore 는 그대로');
+  check(migrated.exclude.split('\n').filter((l) => l === '.pinproof/').length === 1, '옮기기: exclude 의 .pinproof/ 는 한 줄만');
   check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 목록에 표시');
 
   // ---------- React 19 어댑터 (heureum) ----------

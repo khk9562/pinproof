@@ -54,34 +54,17 @@ export function workflowVersionOf(text: string): number {
   return m ? Number(m[1]) : 1;
 }
 
-export const COMMAND_MD = `---
-description: PinProof 기록 건 목록 보기(인자 없음) 또는 처리(번호)
-argument-hint: "[기록 번호]"
----
-
-\`.pinproof/WORKFLOW.md\`를 읽고 그 절차를 그대로 따른다.
-
-인자: $ARGUMENTS
-`;
-
-export const GITIGNORE_MARKER = '# PinProof';
-
-export const GITIGNORE_BLOCK = `${GITIGNORE_MARKER}
+/** .git/info/exclude 에 붙이는 블록. 내 컴퓨터에만 적용되고 모든 워크트리가 함께 쓴다(팀 .gitignore 는 건드리지 않음) */
+export const EXCLUDE_BLOCK = `# PinProof
 .pinproof/
-.claude/commands/pinproof.md
 `;
 
-/** 이전 이름(BugNotes) 시절 .gitignore 블록의 줄들. 옮길 때 지운다 */
-export const LEGACY_GITIGNORE_LINES = ['# BugNotes', '.bugnotes/', '.claude/commands/bugnotes.md'];
+const EXCLUDE_LINES = ['.pinproof', '.pinproof/', '/.pinproof', '/.pinproof/'];
 
-export function removeLegacyGitignore(existing: string): string {
-  const lines = existing.split('\n').filter((l) => !LEGACY_GITIGNORE_LINES.includes(l.trim()));
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
-}
-
-export function appendGitignore(existing: string | null): string | null {
-  if (existing?.includes(GITIGNORE_MARKER)) return null;
-  if (!existing) return GITIGNORE_BLOCK;
+/** exclude 에 .pinproof 줄이 이미 있으면 null, 없으면 블록을 붙인 전체 내용 */
+export function appendExclude(existing: string | null): string | null {
+  if (existing?.split('\n').some((l) => EXCLUDE_LINES.includes(l.trim()))) return null;
+  if (!existing) return EXCLUDE_BLOCK;
   const sep = existing.endsWith('\n') ? '\n' : '\n\n';
-  return `${existing}${sep}${GITIGNORE_BLOCK}`;
+  return `${existing}${sep}${EXCLUDE_BLOCK}`;
 }
