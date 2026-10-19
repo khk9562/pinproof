@@ -36,7 +36,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .small { font-size: 12px; }
 .strong { font-weight: 600; }
 
-.panel { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; min-height: 100vh; }
+.panel { display: flex; flex-direction: column; gap: 16px; padding: 12px 14px; min-height: 100vh; }
 
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
 .pin-logo { display: block; overflow: visible; flex: none; }
@@ -74,12 +74,16 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .btn.danger-text { color: var(--text-2); border-color: transparent; margin-right: auto; }
 .btn.danger-text:hover { color: var(--red); background: var(--surface); }
 
-.nodraft { display: flex; flex-direction: column; gap: 8px; }
+.nodraft { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-l); }
 .nodraft p { margin: 0; }
 
 /* 작성 중 기록 */
-.draft { display: flex; flex-direction: column; gap: 8px; }
-.draft-head { display: flex; align-items: center; gap: 8px; }
+/* 구역: 작성 중 기록(남색 테두리 = 지금 편집 중) · 미분류(점선 = 임시 보관) · 기록 목록(실선) */
+.draft {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  border: 1.5px solid var(--navy); border-radius: var(--radius-l); box-shadow: 0 0 0 3px var(--navy-soft);
+}
+.draft-head { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
 .badge-draft { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--sky-soft); color: var(--on-sky); font-size: 12px; font-weight: 500; }
 .field { display: grid; grid-template-columns: 40px 1fr; align-items: start; gap: 8px; }
 .field > span { color: var(--text-3); font-size: 12px; padding-top: 6px; }
@@ -105,6 +109,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .ev-list { display: flex; flex-direction: column; margin: 2px -6px 0; }
 .ev-list > p { margin: 0 6px; }
 .ev { border-radius: var(--radius-s); }
+/* 증거 줄 사이 구분선 */
+.ev + .ev { border-top: 1px solid var(--surface-2); }
 .ev-row { position: relative; display: flex; align-items: center; }
 .ev-head {
   flex: 1; min-width: 0; display: grid; grid-template-columns: 18px auto minmax(0, 1fr); align-items: center; gap: 8px;
@@ -159,10 +165,11 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .draft-actions { display: flex; justify-content: space-between; gap: 6px; margin-top: 4px; }
 
 /* 미분류 · 기록 목록 */
-.section { display: flex; flex-direction: column; gap: 4px; }
+.section { display: flex; flex-direction: column; gap: 2px; padding: 0 12px 8px; border: 1px solid var(--border); border-radius: var(--radius-l); }
+.section.inbox { border: 1.5px dashed var(--text-3); background: var(--surface); }
 .section-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 12px 0 4px;
-  border: 0; border-top: 1px solid var(--border); background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-2); text-align: left;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 0 8px; margin-bottom: 4px;
+  border: 0; border-bottom: 1px solid var(--border); background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text); text-align: left;
 }
 .section-head.static { cursor: default; }
 .count { color: var(--text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -170,7 +177,9 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 
 .rec { display: flex; align-items: center; gap: 8px; margin: 0 -6px; padding: 7px 6px; border-radius: var(--radius-s); transition: background var(--t); }
 .rec:hover { background: var(--surface); }
-.rec.editing { background: var(--sky-soft); }
+/* 편집 중인 기록: 채도 낮은 회청색 배경 + 번호만 남색 */
+.rec.editing { background: var(--surface-2); }
+.rec.editing .rec-main .mono { color: var(--navy); }
 .rec-main {
   display: grid; grid-template-columns: auto 1fr; column-gap: 8px; flex: 1; min-width: 0;
   padding: 0; border: 0; background: none; text-align: left; cursor: pointer;

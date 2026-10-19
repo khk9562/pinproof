@@ -444,7 +444,7 @@ function InboxSection({ bn }: { bn: PinProof }) {
   const [open, setOpen] = useState(true);
   if (bn.inbox.length === 0) return null;
   return (
-    <section className="section">
+    <section className="section inbox">
       <button className="section-head" onClick={() => setOpen(!open)}>
         {open ? '▾' : '▸'} 미분류 <span className="count">{bn.inbox.length}</span>
       </button>
@@ -470,7 +470,7 @@ function RecordList({ bn }: { bn: PinProof }) {
   const [showArchived, setShowArchived] = useState(false);
   const list = bn.records.filter((r) => r.archived === showArchived);
   return (
-    <section className="section">
+    <section className="section records">
       <div className="section-head static">
         <span>
           {showArchived ? '보관함' : '기록'} <span className="count">{list.length}</span>
