@@ -57,7 +57,7 @@ npm run build
 커맨드는 프로젝트가 아니라 개인 설정(`~/.claude/commands/`)에 둡니다. 팀 저장소에 흔적이 남지 않고, 어느 프로젝트·워크트리에서든 `.pinproof/`가 있으면 동작합니다.
 
 ```bash
-mkdir -p ~/.claude/commands && printf '%s\n' '---' 'description: PinProof 기록 건 목록 보기(인자 없음) 또는 처리(번호)' 'argument-hint: "[기록 번호]"' '---' '' '`.pinproof/WORKFLOW.md`를 읽고 그 절차를 그대로 따른다.' '' '인자: $ARGUMENTS' > ~/.claude/commands/pinproof.md
+mkdir -p ~/.claude/commands && printf '%s\n' '---' 'description: PinProof 기록 건 목록 보기(인자 없음) 또는 처리(번호)' 'argument-hint: "[기록 번호]"' '---' '' '`.pinproof/WORKFLOW.md`를 읽고 그 절차를 그대로 따른다. 지금 폴더에 `.pinproof/`가 없으면 `git worktree list` 첫 줄(메인 워크트리)의 `.pinproof/`를 쓰고, 코드 수정은 지금 폴더에서 한다.' '' '인자: $ARGUMENTS' > ~/.claude/commands/pinproof.md
 ```
 
 예전 버전으로 연결한 프로젝트에는 `.claude/commands/pinproof.md`와 `.gitignore`의 `# PinProof` 블록이 남아 있을 수 있습니다. 익스텐션은 이것들을 지우지 않습니다(팀 파일일 수 있어서). 필요 없으면 직접 지우고 `.git/info/exclude`에 `.pinproof/`를 넣으세요.
@@ -70,6 +70,8 @@ mkdir -p ~/.claude/commands && printf '%s\n' '---' 'description: PinProof 기록
 ```
 
 claude.ai나 다른 에이전트에는 패널의 **복사** 버튼으로 프롬프트를 붙여넣으세요. 기록은 일반 Markdown이라 어떤 에이전트든 읽을 수 있습니다.
+
+**git 워크트리에서 처리할 때**: 기록은 폴더를 연결한 메인 워크트리의 `.pinproof/`에만 있습니다. `/pinproof 12`와 **복사** 문구, 처리 절차(WORKFLOW v3)는 모두 "지금 폴더에 `.pinproof/`가 없으면 `git worktree list` 첫 줄(메인 워크트리)의 `.pinproof/`를 읽고, 코드 수정은 지금 폴더에서"를 따르므로 어느 워크트리의 세션에 보내도 됩니다. (익스텐션은 브라우저 보안상 연결한 폴더의 절대 경로를 알 수 없어 경로 대신 이 규칙을 씁니다.) 기존 프로젝트는 패널의 **처리 절차 새 버전 · [업데이트]** 를 눌러 v3로 바꾸고, 개인 커맨드도 위 설치 명령으로 다시 만드세요.
 
 화면에서 수정이 확인되면 목록의 **보관**을 누릅니다. md와 스크린샷이 `.pinproof/archive/`로 옮겨지고(삭제 안 함) `/pinproof` 목록에서 빠집니다.
 

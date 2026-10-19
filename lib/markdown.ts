@@ -250,7 +250,14 @@ export function idFromFileName(name: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Claude Code 등에 붙여넣을 프롬프트. 기록은 보통 메인 워크트리의 .pinproof/ 에만 있으므로,
+ * 다른 git 워크트리에서 받아도 찾아갈 수 있게 메인 워크트리를 가리킨다(익스텐션은 폴더의 절대 경로를 알 수 없다).
+ */
 export function copyPrompt(fileName: string, archived = false): string {
   const path = archived ? `.pinproof/archive/${fileName}` : `.pinproof/${fileName}`;
-  return `\`.pinproof/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.`;
+  return (
+    `\`.pinproof/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.\n` +
+    `지금 폴더에 \`.pinproof/\`가 없으면 \`git worktree list\` 첫 줄(메인 워크트리)의 \`.pinproof/\`에서 찾아 읽고, 코드 수정은 지금 폴더에서 해줘.`
+  );
 }

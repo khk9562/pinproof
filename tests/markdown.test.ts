@@ -148,8 +148,14 @@ describe('파일명·문자·프롬프트', () => {
   });
 
   it('복사 프롬프트는 WORKFLOW와 파일 경로를 가리킨다', () => {
-    expect(copyPrompt('012-x.md')).toBe('`.pinproof/WORKFLOW.md` 절차대로 `.pinproof/012-x.md` 기록 건을 처리해줘.');
+    expect(copyPrompt('012-x.md').split('\n')[0]).toBe('`.pinproof/WORKFLOW.md` 절차대로 `.pinproof/012-x.md` 기록 건을 처리해줘.');
     expect(copyPrompt('012-x.md', true)).toContain('.pinproof/archive/012-x.md');
+  });
+
+  it('복사 프롬프트는 다른 워크트리에서도 메인 워크트리의 .pinproof/ 를 찾게 한다', () => {
+    const p = copyPrompt('012-x.md');
+    expect(p).toContain('git worktree list');
+    expect(p).toContain('코드 수정은 지금 폴더에서');
   });
 });
 

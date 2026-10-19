@@ -1,5 +1,5 @@
 /** WORKFLOW.md 내용이 바뀌면 올린다. 파일 첫 줄의 버전과 비교해 갱신 여부를 정한다 */
-export const WORKFLOW_VERSION = 2;
+export const WORKFLOW_VERSION = 3;
 export const WORKFLOW_MARKER = (v: number) => `<!-- pinproof-workflow v${v} -->`;
 
 export const WORKFLOW_MD = `${WORKFLOW_MARKER(WORKFLOW_VERSION)}
@@ -9,6 +9,8 @@ export const WORKFLOW_MD = `${WORKFLOW_MARKER(WORKFLOW_VERSION)}
 기록 건 1개 = md 파일 1개(\`012-제목.md\`), 스크린샷은 \`assets/012/\`에 있습니다. \`archive/\`는 사용자가 끝났다고 보관한 건이므로 따로 지시가 없으면 보지 않습니다.
 
 프로젝트별 추가 규칙이 \`.pinproof/WORKFLOW.local.md\`에 있으면 그 내용도 함께 따릅니다(이 파일과 충돌하면 local이 우선).
+
+\`.pinproof/\`는 보통 저장소의 메인 워크트리에만 있습니다. 지금 작업 폴더(git 워크트리)에 \`.pinproof/\`가 없으면 \`git worktree list\` 첫 줄(메인 워크트리) 아래의 \`.pinproof/\`를 씁니다. 기록 읽기와 \`## 처리 기록\` 쓰기는 그 경로에서, 코드 수정은 지금 작업 폴더에서 합니다.
 
 ## 인자가 없을 때: 목록
 \`.pinproof/*.md\`(WORKFLOW.md, archive/ 제외)의 frontmatter를 읽어 아래 형식으로만 보여주고 멈춥니다.
