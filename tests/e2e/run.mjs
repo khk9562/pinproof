@@ -95,6 +95,16 @@ try {
       }
     }, p);
 
+  // 패널에 뜬 안내·경고를 모두 모아 둔다(잠깐 떴다 사라지는 저장 실패 경고도 잡으려고)
+  await panel.evaluate(() => {
+    window.__notices = [];
+    new MutationObserver(() => {
+      for (const n of document.querySelectorAll('.notice')) {
+        if (!window.__notices.includes(n.textContent)) window.__notices.push(n.textContent);
+      }
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+
   // ---------- 연결 ----------
   // git 저장소처럼 보이게 .git/info/exclude 와 팀 .gitignore 를 미리 둔다
   await panel.evaluate(async () => {
@@ -300,6 +310,8 @@ try {
 
   await panel.setViewportSize({ width: 400, height: 1400 });
   await panel.screenshot({ path: path.join(outDir, 'panel-draft.png'), fullPage: true });
+  const saveFails = (await panel.evaluate(() => window.__notices)).filter((t) => t.includes('저장 실패'));
+  check(saveFails.length === 0, `연달아 담아도 "파일 저장 실패" 경고 없음${saveFails.length ? `: ${saveFails[0]}` : ''}`);
 
   // ---------- 작성 종료 → 목록 → 보관 ----------
   await panel.getByRole('button', { name: '작성 종료' }).click();

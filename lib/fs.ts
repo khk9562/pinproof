@@ -255,8 +255,27 @@ async function findFileForId(dir: Dir, id: number): Promise<string | null> {
   return null;
 }
 
+/**
+ * 프로젝트 폴더를 바꾸는 작업(기록 쓰기·보관·삭제)을 한 줄로 세워 차례로 실행한다.
+ * 저장이 겹치면 한쪽이 다른 쪽의 쓰기 중 임시 파일(F.png.1.crswap)을 남은 스크린샷으로 보고 지우려다
+ * NoModificationAllowedError 로 실패하고, 지우기에 성공하면 다른 쪽 쓰기가 깨진다.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+function serial<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task);
+  queue = run.catch(() => {});
+  return run;
+}
+
+/** 증거 스크린샷 파일 이름(assets/<id>/<문자>.png). 정리할 때 이 이름만 지운다 */
+const SCREENSHOT_NAME = /^[A-Z]+\.png$/;
+
 /** 기록 건을 md + 스크린샷으로 쓴다. 처리 기록 섹션은 보존하고, 제목이 바뀌었으면 파일명을 바꾼다. */
-export async function writeRecord(root: Dir, record: BugRecord): Promise<string> {
+export function writeRecord(root: Dir, record: BugRecord): Promise<string> {
+  return serial(() => writeRecordNow(root, record));
+}
+
+async function writeRecordNow(root: Dir, record: BugRecord): Promise<string> {
   const notes = (await getDir(root, [NOTES_DIR], true))!;
   const fileName = recordFileName(record);
   const oldName = await findFileForId(notes, record.id);
@@ -270,9 +289,9 @@ export async function writeRecord(root: Dir, record: BugRecord): Promise<string>
     keep.add(name);
     await writeFile(assets!, name, dataUrlToBlob(e.screenshot));
   }
-  // 삭제되거나 문자가 바뀐 증거의 스크린샷 정리
+  // 삭제되거나 문자가 바뀐 증거의 스크린샷 정리 (임시 파일 등 다른 파일은 건드리지 않는다)
   for (const name of await listNames(assets)) {
-    if (!keep.has(name)) await assets!.removeEntry(name);
+    if (SCREENSHOT_NAME.test(name) && !keep.has(name)) await assets!.removeEntry(name);
   }
 
   await writeFile(notes, fileName, mergeWithExisting(renderRecord(record), existing));
@@ -296,7 +315,11 @@ async function moveAssets(fromNotes: Dir, toNotes: Dir, id: number): Promise<voi
 }
 
 /** 보관: md와 assets/<id>를 archive/로 옮긴다(삭제하지 않음). restore=true면 되돌린다. */
-export async function archiveRecord(root: Dir, id: number, restore = false): Promise<void> {
+export function archiveRecord(root: Dir, id: number, restore = false): Promise<void> {
+  return serial(() => archiveRecordNow(root, id, restore));
+}
+
+async function archiveRecordNow(root: Dir, id: number, restore: boolean): Promise<void> {
   const notes = (await getDir(root, [NOTES_DIR], true))!;
   const archive = (await getDir(notes, [ARCHIVE_DIR], true))!;
   const [from, to] = restore ? [archive, notes] : [notes, archive];
@@ -307,7 +330,11 @@ export async function archiveRecord(root: Dir, id: number, restore = false): Pro
 }
 
 /** 기록 삭제: md와 assets/<id>를 지운다(보관함에 있으면 보관함에서). 되돌릴 수 없다 */
-export async function deleteRecord(root: Dir, id: number, archived: boolean): Promise<void> {
+export function deleteRecord(root: Dir, id: number, archived: boolean): Promise<void> {
+  return serial(() => deleteRecordNow(root, id, archived));
+}
+
+async function deleteRecordNow(root: Dir, id: number, archived: boolean): Promise<void> {
   const notes = await getDir(root, [NOTES_DIR], false);
   const dir = notes && (archived ? await getDir(notes, [ARCHIVE_DIR], false) : notes);
   if (!dir) throw new Error(`#${padId(id)} 파일을 찾을 수 없습니다.`);
