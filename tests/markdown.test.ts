@@ -139,6 +139,11 @@ describe('parseSummary', () => {
     const s = parseSummary(`${renderRecord(record)}\n## 처리 기록\n- x`, '012-x.md', false)!;
     expect(s).toMatchObject({ id: 12, title: '대시보드 총합 불일치', type: '버그', evidenceCount: 4, hasResult: true });
   });
+
+  it('요약에 기록을 만든 앱 주소(app)를 담는다 — 없으면 undefined', () => {
+    expect(parseSummary(renderRecord(record), '012-x.md', false)!.app).toBe('http://localhost:5190');
+    expect(parseSummary('---\nid: 77\ntitle: "옛 기록"\n---\n', '077-x.md', false)!.app).toBeUndefined();
+  });
 });
 
 describe('파일명·문자·프롬프트', () => {

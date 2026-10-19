@@ -244,6 +244,7 @@ export function parseSummary(text: string, fileName: string, archived: boolean):
     fileName,
     archived,
     hasResult: findResultHeading(text) !== -1,
+    app: fields.app || undefined,
   };
 }
 

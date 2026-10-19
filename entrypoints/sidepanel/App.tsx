@@ -537,7 +537,12 @@ function InboxSection({ bn }: { bn: PinProof }) {
 
 function RecordList({ bn }: { bn: PinProof }) {
   const [showArchived, setShowArchived] = useState(false);
-  const list = bn.records.filter((r) => r.archived === showArchived);
+  const [showOthers, setShowOthers] = useState(false);
+  const inView = bn.records.filter((r) => r.archived === showArchived);
+  // 같은 폴더에 여러 주소(localhost·배포 주소)를 연결할 수 있어, 지금 주소에서 만든 기록만 기본으로 보인다.
+  // 주소가 없는 옛 기록은 어느 쪽인지 몰라 함께 보인다. 다른 주소의 기록은 그 주소 탭에서만 다시 열어 편집된다
+  const list = inView.filter((r) => !r.app || r.app === bn.origin);
+  const others = inView.filter((r) => r.app && r.app !== bn.origin);
   return (
     <section className="section records">
       <div className="section-head static">
@@ -552,20 +557,40 @@ function RecordList({ bn }: { bn: PinProof }) {
       {list.map((r) => (
         <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
       ))}
+      {others.length > 0 && (
+        <div className="others">
+          <button className="link others-toggle" onClick={() => setShowOthers(!showOthers)}>
+            {showOthers ? '다른 주소 기록 접기' : `다른 주소 기록 ${others.length}건 보기`}
+          </button>
+          {showOthers &&
+            others.map((r) => (
+              <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
+            ))}
+        </div>
+      )}
     </section>
   );
 }
 
 function RecordRow({ r, bn }: { r: RecordSummary; bn: PinProof }) {
   const editing = bn.draft?.id === r.id;
+  /** 다른 주소에서 만든 기록: 그 주소 탭에서만 다시 열어 편집된다 */
+  const other = !!r.app && r.app !== bn.origin;
+  const otherHost = other ? r.app!.replace(/^https?:\/\//, '') : '';
   return (
-    <div className={`rec ${editing ? 'editing' : ''}`}>
-      <button className="rec-main" onClick={() => bn.openRecord(r)} disabled={r.archived || editing} title={r.archived ? '' : '다시 열어 증거 추가·수정'}>
+    <div className={`rec ${editing ? 'editing' : ''} ${other ? 'other' : ''}`}>
+      <button
+        className="rec-main"
+        onClick={() => bn.openRecord(r)}
+        disabled={r.archived || editing || other}
+        title={other ? `${otherHost} 에서 만든 기록입니다. 그 주소 탭에서 열면 편집할 수 있습니다.` : r.archived ? '' : '다시 열어 증거 추가·수정'}
+      >
         <span className="mono strong">#{padId(r.id)}</span>
         <span className="rec-title">{r.title || '(제목 없음)'}</span>
         <span className="rec-meta">
           {r.type} · 증거 {r.evidenceCount}
           {r.hasResult && <span className="done"> · 처리 기록 있음</span>}
+          {other && <span className="mono"> · {otherHost}</span>}
         </span>
       </button>
       <div className="rec-actions">

@@ -509,6 +509,23 @@ try {
   const deployMd = deployMdName ? await readOpfs(`.pinproof/${deployMdName}`) : '';
   check(deployMd.includes(`app: ${DEPLOY}`) && deployMd.includes('env: deployed'), `배포 주소에서 담은 기록에 env: deployed (${deployMdName})`);
   await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.waitForTimeout(600);
+  check(await panel.locator('.records .rec-title', { hasText: '배포 환경 확인' }).first().isVisible(), '배포 주소 탭의 목록에는 그 주소에서 만든 기록이 보임');
+
+  // 기록 목록은 지금 주소 기준: localhost 탭에서는 배포 주소 기록을 접어 두고, 펼치면 주소와 함께(열기는 막힘)
+  await app.goto(`${BASE}/dashboard`);
+  await panel.waitForTimeout(800);
+  const deployRow = panel.locator('.records > .rec', { hasText: '배포 환경 확인' });
+  check((await deployRow.count()) === 0, 'localhost 탭의 기본 목록에는 배포 주소 기록이 없음');
+  check(await panel.locator('.records .rec-title', { hasText: '옛 기록' }).isVisible(), '주소가 없는 옛 기록은 그대로 보임');
+  const othersToggle = panel.locator('.others-toggle');
+  check((await othersToggle.textContent()) === '다른 주소 기록 1건 보기', `다른 주소 기록은 접어 둠: ${await othersToggle.textContent()}`);
+  await othersToggle.click();
+  const otherRow = panel.locator('.others .rec.other', { hasText: '배포 환경 확인' });
+  check((await otherRow.count()) === 1 && (await otherRow.locator('.rec-meta').textContent()).includes('deploy.test:5199'), '펼치면 다른 주소 기록이 주소와 함께 보임');
+  check(await otherRow.locator('.rec-main').isDisabled(), '다른 주소 기록은 다시 열기가 막힘(복사·보관·삭제만)');
+  await panel.screenshot({ path: path.join(outDir, 'panel-others.png'), fullPage: true });
+  await othersToggle.click();
 
   // ---------- 다크 모드: 기본은 시스템 설정, 패널 버튼으로 시스템 → 라이트 → 다크 ----------
   const panelBg = () => panel.evaluate(() => getComputedStyle(document.body).backgroundColor);

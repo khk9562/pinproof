@@ -109,4 +109,6 @@ export interface RecordSummary {
   fileName: string;
   archived: boolean;
   hasResult: boolean;
+  /** 기록을 만든 앱 주소(frontmatter app). 옛 기록처럼 없으면 undefined */
+  app?: string;
 }
