@@ -25,6 +25,7 @@ import {
   ToContent,
   ToPanel,
 } from '@/lib/messages';
+import { pagePath } from '@/lib/markdown';
 import { currentRoute } from '@/lib/network';
 import { ComponentInfo, Evidence, NetworkEntry } from '@/lib/types';
 import { Markers } from './markers';
@@ -288,12 +289,12 @@ class Picker {
     return s?.record && s.nextLetter ? { recordId: s.record.id, letter: s.nextLetter } : null;
   }
 
-  /** 지금 route 에서 같은 대상을 이미 담았으면 그 마커 */
+  /** 지금 주소(경로 + ?쿼리 + #해시)에서 같은 대상을 이미 담았으면 그 마커 */
   private existingMarker(kind: 'element' | 'text', selector: string, quote?: string): MarkerInfo | null {
-    const route = currentRoute();
+    const page = pagePath(location.href);
     return (
       this.state?.markers.find((m) => {
-        if (m.route !== route || m.selector !== selector) return false;
+        if (m.page !== page || m.selector !== selector) return false;
         if (kind === 'text') return m.kind === 'text' && m.quote === quote;
         return m.kind === 'element' || m.kind === 'container';
       }) ?? null

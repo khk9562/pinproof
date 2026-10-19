@@ -207,6 +207,13 @@ try {
   await app.screenshot({ path: path.join(outDir, 'page-markers.png') });
   check((await pins()).sort().join(',') === 'A,·', `페이지에 A 마커 + 미분류 점: ${(await pins()).join(',')}`);
   check((await ov((h) => h.shadowRoot.querySelector('.pin:not(.loose) .tip').textContent)).includes('총합 숫자가'), '마커 툴팁에 메모');
+  // 같은 경로라도 ?tab= 처럼 쿼리로 화면이 바뀌면 마커를 숨기고, 원래 주소로 돌아오면 다시 보인다 (SPA 이동)
+  await app.evaluate(() => history.pushState(null, '', '/dashboard?tab=other'));
+  await app.waitForTimeout(300);
+  check((await pins()).length === 0, `쿼리만 바뀐 화면(?tab=other)에서는 마커 숨김: ${(await pins()).join(',')}`);
+  await app.evaluate(() => history.pushState(null, '', '/dashboard'));
+  await app.waitForTimeout(300);
+  check((await pins()).sort().join(',') === 'A,·', '원래 주소로 돌아오면 마커 다시 보임');
 
   // ✕ 로 삭제 → 다시 담기
   await app.keyboard.press('Escape');

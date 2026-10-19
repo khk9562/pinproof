@@ -1,6 +1,6 @@
 import { findBySelector } from '@/lib/dom';
 import { MarkerInfo } from '@/lib/messages';
-import { currentRoute } from '@/lib/network';
+import { pagePath } from '@/lib/markdown';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -11,7 +11,7 @@ const REFIND_MS = 500;
 
 /**
  * 담은 증거를 요소 위 테두리에 A·B·C 마커로 보여준다(미분류는 문자 없는 회색 점).
- * 지금 route 의 증거만, 요소가 화면에 있을 때만 보인다. 매 프레임 tick() 으로 위치를 맞춘다.
+ * 지금 주소(경로 + ?쿼리 + #해시)에서 담은 증거만, 요소가 화면에 있을 때만 보인다. 매 프레임 tick() 으로 위치를 맞춘다.
  */
 export class Markers {
   readonly layer: HTMLElement;
@@ -113,10 +113,11 @@ export class Markers {
   }
 
   tick() {
-    const route = currentRoute();
+    const page = pagePath(location.href);
     for (const it of this.items.values()) {
-      const target = it.m.route === route && it.m.kind !== 'region' ? this.find(it) : null;
-      const p = it.m.route === route ? this.locate(it.m, target) : null;
+      const here = it.m.page === page;
+      const target = here && it.m.kind !== 'region' ? this.find(it) : null;
+      const p = here ? this.locate(it.m, target) : null;
       const visible = !!p && p.y > -12 && p.y < innerHeight + 12 && p.x > -12 && p.x < innerWidth + 12;
       if (it.el.hidden === visible) it.el.hidden = !visible;
       if (!visible || !p) continue;

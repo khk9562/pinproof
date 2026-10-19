@@ -3,7 +3,7 @@ import { connectFolder, isSupportedUrl, routeOf } from '@/lib/connect';
 import * as db from '@/lib/db';
 import { archiveRecord, deleteRecord, ensurePermission, hasLegacy, listRecords, migrateLegacy, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
 import type { WorkflowStatus } from '@/lib/fs';
-import { copyPrompt, letterFor, padId, recordFileName, sameTarget } from '@/lib/markdown';
+import { copyPrompt, letterFor, padId, pagePath, recordFileName, sameTarget } from '@/lib/markdown';
 import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
 import { BugRecord, Evidence, RecordSummary } from '@/lib/types';
@@ -45,7 +45,7 @@ function markerOf(e: Evidence): MarkerInfo | null {
     uid: e.uid,
     letter: e.letter,
     kind: e.kind,
-    route: e.route,
+    page: pagePath(e.url),
     note: e.note,
     selector: e.selector,
     anchor: e.anchor,
@@ -574,10 +574,10 @@ export function usePinProof() {
     [tabId, tabUrl, toContent, say],
   );
 
-  /** 목록에서 고른 증거가 지금 페이지에 있으면 그 마커를 반짝인다(다른 페이지면 아무것도 안 함) */
+  /** 목록에서 고른 증거가 지금 페이지(주소 전체가 같은 화면)에 있으면 그 마커를 반짝인다 */
   const locate = useCallback(
     (ev: Evidence) => {
-      if (!ev.selector || ev.route !== routeOf(tabUrl || 'http://x/')) return;
+      if (!ev.selector || !tabUrl || pagePath(ev.url) !== pagePath(tabUrl)) return;
       toContent({ type: 'bn:flash', selector: ev.selector, uid: ev.uid });
     },
     [tabUrl, toContent],

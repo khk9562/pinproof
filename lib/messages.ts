@@ -21,7 +21,11 @@ export interface MarkerInfo {
   uid: string;
   letter?: string;
   kind: EvidenceKind;
-  route: string;
+  /**
+   * 담은 화면의 주소(경로 + ?쿼리 + #해시). 마커는 지금 주소가 이것과 같을 때만 보인다.
+   * 경로만 비교하면 ?tab= 처럼 쿼리로 바뀌는 화면에서 다른 탭의 마커가 엉뚱한 요소에 붙는다.
+   */
+  page: string;
   note: string;
   selector?: string;
   anchor?: { x: number; y: number };
