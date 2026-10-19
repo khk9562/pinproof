@@ -71,7 +71,10 @@ export type ToPanel =
   | { type: 'bn:edit'; uid: string; edit: EvidenceEdit };
 
 /** content script → background */
-export type ToBackground = { type: 'bn:screenshot' };
+export type ToBackground =
+  | { type: 'bn:screenshot' }
+  /** 사이트를 켜거나 끈 뒤, 그 사이트의 스크립트 등록을 맞출 때까지 기다린다(그다음 탭을 새로고침) */
+  | { type: 'bn:sync-sites' };
 
 /** isolated world ↔ MAIN world (window.postMessage) */
 export const BRIDGE_KEY = '__pinproof_bridge__';

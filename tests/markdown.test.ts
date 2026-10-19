@@ -89,6 +89,12 @@ describe('renderRecord', () => {
     expect(md).toContain('evidence: 4');
   });
 
+  it('env: localhost 는 local, 그 밖의 주소(사이트별로 켠 배포 주소)는 deployed', () => {
+    expect(md).toContain('app: http://localhost:5190\nenv: local');
+    expect(renderRecord({ ...record, app: 'http://192.168.0.92:20100' })).toContain('env: deployed');
+    expect(renderRecord({ ...record, app: 'http://127.0.0.1:3000' })).toContain('env: local');
+  });
+
   it('증거마다 문자·종류·route 헤더와 React Grab 형식 참조를 쓴다', () => {
     expect(md).toContain('### A. 요소 — /dashboard');
     expect(md).toContain('- 참조: `<div> in SummaryCard › DashboardPage (src/components/SummaryCard.tsx:42 근처)`');

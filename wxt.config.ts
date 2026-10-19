@@ -17,8 +17,10 @@ export default defineConfig({
     key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArH6+DfetCI2kANOkRcnNF7COzO2YWOB2pj/XVrPLWnlz5VxN5LvZORsr0VvP2GwiXprLWwnOE5o4hiYqRDLzblUvOBKHezTXQc04aKCcSco92ZzR+t7+etDdM7P9hDp9D4WeFSaIuokb7YANXAuXBvazU05x1WI5aXIPgrDE2jwlm0kED3p+U6alMj4ZdGVQX0q5N7aEPQu6603G1tx4PvxA7eRfXHdJm4YtJv8l/oOVNDqXHDraeRnlzt4RXxdUVMa9WSkRxMsGk+2cuVA354YJixLy0diEJuyXmvsUkm/GJiFJ2G8KeblpVc42uDRh4oysiP2pz7Ul5X9Y6bQg6wIDAQAB',
     name: 'PinProof',
     description: '화면 버그를 증거와 함께 기록해 Claude Code에 건별로 넘깁니다.',
-    permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'tabs', 'activeTab'],
+    permissions: ['sidePanel', 'storage', 'unlimitedStorage', 'tabs', 'activeTab', 'scripting'],
     host_permissions: ['http://localhost/*', 'http://127.0.0.1/*', ...(e2e ? ['<all_urls>'] : [])],
+    // 배포 주소 등 localhost 가 아닌 사이트는 사용자가 패널에서 [이 사이트에서 켜기]를 눌러 사이트별로 허용한다
+    optional_host_permissions: ['http://*/*', 'https://*/*'],
     action: { default_title: 'PinProof 열기 (Alt+Shift+B)' },
     commands: {
       _execute_action: {

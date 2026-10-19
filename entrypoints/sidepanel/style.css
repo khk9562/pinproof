@@ -106,6 +106,9 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 
 .empty { padding: 24px 4px; }
 .empty-title { font-weight: 600; margin: 0 0 6px; }
+.empty .btn { margin-top: 12px; }
+.empty .mono { color: var(--text); }
+.site-on { margin: 0; }
 
 /* 연결 상태 */
 .conn { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }

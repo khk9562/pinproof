@@ -181,6 +181,8 @@ export function renderRecord(record: BugRecord): string {
   out.push(`created: ${record.created}`);
   if (record.updated) out.push(`updated: ${record.updated}`);
   out.push(`app: ${record.app}`);
+  // 배포 주소(사이트별로 켠 곳)에서 모은 기록인지. WORKFLOW 가 소스 위치·버전 차이를 다르게 다룬다
+  out.push(`env: ${/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(record.app) ? 'local' : 'deployed'}`);
   out.push(`evidence: ${record.evidence.length}`);
   out.push('---');
   out.push('');

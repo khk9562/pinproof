@@ -49,7 +49,8 @@ const ctx = await chromium.launchPersistentContext(profile, {
   channel: 'chromium',
   headless: true,
   viewport: { width: 1280, height: 800 },
-  args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`],
+  // deploy.test 를 localhost 가 아닌 "배포 주소"처럼 쓰려고 127.0.0.1 로 돌린다
+  args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`, '--host-resolver-rules=MAP deploy.test 127.0.0.1'],
 });
 
 try {
@@ -154,6 +155,7 @@ try {
   const pins = () => ov((h) => [...h.shadowRoot.querySelectorAll('.pin:not(.temp):not(.leaving):not([hidden])')].map((p) => (p.classList.contains('loose') ? '·' : p.firstChild?.textContent ?? '')));
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   check(await app.locator('pinproof-overlay .tb').isVisible(), '패널이 열려 있으면 페이지 오른쪽 위에 툴바');
+  check((await app.evaluate(() => document.querySelectorAll('pinproof-overlay').length)) === 1, 'localhost 에는 페이지 스크립트가 한 번만(고정 등록과 사이트별 등록이 겹치지 않음)');
   check(!(await panel.getByRole('button', { name: /^요소/ }).count()), '패널에는 모드 버튼 없음(툴바로 옮김)');
 
   // ---------- 미분류 ----------
@@ -450,6 +452,38 @@ try {
   check(migrated.gitignore.includes('# BugNotes') && !migrated.gitignore.includes('.pinproof/'), '옮기기: 팀 .gitignore 는 그대로');
   check(migrated.exclude.split('\n').filter((l) => l === '.pinproof/').length === 1, '옮기기: exclude 의 .pinproof/ 는 한 줄만');
   check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 목록에 표시');
+
+  // ---------- 배포 주소(localhost 아님): 사이트별로 켠 곳에서도 동작하고 로컬 폴더에 연결 ----------
+  // (E2E 빌드는 <all_urls> 권한이 있어 켜기 버튼의 권한 확인 창 없이 "켜진 사이트"로 취급된다)
+  const DEPLOY = 'http://deploy.test:5199';
+  await app.goto(`${DEPLOY}/dashboard`);
+  await panel.waitForTimeout(800);
+  check(await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).isVisible(), '배포 주소는 따로 폴더를 연결한다(같은 로컬 폴더에 연결 가능)');
+  check(await panel.locator('.site-on').isVisible(), '켠 사이트에는 "직접 켠 사이트입니다 · 끄기" 표시');
+  await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
+  await panel.getByRole('button', { name: '+ 새 기록' }).waitFor();
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  check(await app.locator('pinproof-overlay .tb').isVisible(), '배포 주소에도 사이트별 등록으로 툴바가 뜸');
+  await panel.getByRole('button', { name: '+ 새 기록' }).click();
+  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('배포 환경 확인');
+  await tool('요소').click();
+  await app.click('[data-testid="summary-total"]');
+  await confirm('배포에서 본 값');
+  await panel.locator('.draft .ev').first().waitFor({ timeout: 5000 });
+  await app.keyboard.press('Escape');
+  await app.goto(`${DEPLOY}/nodes`);
+  await app.locator('#node-table').waitFor();
+  await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
+  await app.waitForTimeout(500);
+  await tool('네트워크').click();
+  await panel.locator('.draft .ev').nth(1).waitFor({ timeout: 5000 }).catch(() => {});
+  check((await panel.locator('.draft .ev.network').count()) === 1, '배포 주소에서도 네트워크 기록(MAIN world 스크립트) 동작');
+  const deployId = (await panel.locator('.draft-head .mono').textContent()).replace('#', '');
+  await panel.waitForTimeout(1200);
+  const deployMdName = (await readOpfs('.pinproof/')).split(',').find((n) => n.startsWith(`${deployId}-`));
+  const deployMd = deployMdName ? await readOpfs(`.pinproof/${deployMdName}`) : '';
+  check(deployMd.includes(`app: ${DEPLOY}`) && deployMd.includes('env: deployed'), `배포 주소에서 담은 기록에 env: deployed (${deployMdName})`);
+  await panel.getByRole('button', { name: '작성 종료' }).click();
 
   // ---------- 다크 모드: 기본은 시스템 설정, 패널 버튼으로 시스템 → 라이트 → 다크 ----------
   const panelBg = () => panel.evaluate(() => getComputedStyle(document.body).backgroundColor);

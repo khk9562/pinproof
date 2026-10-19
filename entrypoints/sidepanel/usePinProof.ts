@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectFolder, isSupportedUrl, routeOf } from '@/lib/connect';
+import { connectFolder, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
 import * as db from '@/lib/db';
 import { archiveRecord, deleteRecord, ensurePermission, hasLegacy, listRecords, migrateLegacy, nextRecordId, updateWorkflow, workflowStatus, writeRecord } from '@/lib/fs';
 import type { WorkflowStatus } from '@/lib/fs';
@@ -88,7 +88,11 @@ export function usePinProof() {
   /** 이전 이름(BugNotes)의 .bugnotes/ 폴더가 남아 있으면 [옮기기] 버튼을 보여준다 */
   const [legacy, setLegacy] = useState(false);
 
-  const origin = isSupportedUrl(tabUrl) ? new URL(tabUrl).origin : null;
+  /** localhost 가 아닌 탭에서, 사용자가 이 사이트를 켜 두었는지 */
+  const [siteAllowed, setSiteAllowed] = useState(false);
+  const local = isSupportedUrl(tabUrl);
+  const pattern = local ? null : sitePattern(tabUrl);
+  const origin = local || (pattern && siteAllowed) ? new URL(tabUrl).origin : null;
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const draftRef = useRef<BugRecord | null>(null);
   const writeTimer = useRef<number | undefined>(undefined);
@@ -132,6 +136,37 @@ export function usePinProof() {
       chrome.tabs.onUpdated.removeListener(onUpdated);
     };
   }, []);
+
+  // ---------- 사이트별 켜기 (localhost 가 아닌 배포 주소 등) ----------
+  useEffect(() => {
+    if (!pattern) {
+      setSiteAllowed(false);
+      return;
+    }
+    const check = () => chrome.permissions.contains({ origins: [pattern] }).then(setSiteAllowed, () => setSiteAllowed(false));
+    check();
+    chrome.permissions.onAdded.addListener(check);
+    chrome.permissions.onRemoved.addListener(check);
+    return () => {
+      chrome.permissions.onAdded.removeListener(check);
+      chrome.permissions.onRemoved.removeListener(check);
+    };
+  }, [pattern]);
+
+  /** 권한 확인 → 스크립트 등록을 맞출 때까지 기다림 → 탭 새로고침(네트워크 기록은 페이지 맨 처음에 들어가야 함) */
+  const toggleSite = useCallback(
+    async (on: boolean) => {
+      if (!pattern || tabId === null) return;
+      const ok = on ? await chrome.permissions.request({ origins: [pattern] }) : await chrome.permissions.remove({ origins: [pattern] });
+      if (!ok) return;
+      setSiteAllowed(on);
+      await chrome.runtime.sendMessage({ type: 'bn:sync-sites' }).catch(() => {});
+      await chrome.tabs.reload(tabId);
+    },
+    [pattern, tabId],
+  );
+  const enableSite = useCallback(() => toggleSite(true), [toggleSite]);
+  const disableSite = useCallback(() => toggleSite(false), [toggleSite]);
 
   const toContent = useCallback(
     async <T = unknown,>(msg: ToContent): Promise<T | null> => {
@@ -545,7 +580,7 @@ export function usePinProof() {
   /** 클립보드 붙여넣기·끌어다 놓기로 받은 이미지/텍스트를 증거로 담는다 */
   const addPasted = useCallback(
     async (dt: DataTransfer) => {
-      if (!tabUrl || !isSupportedUrl(tabUrl)) return;
+      if (!tabUrl || !origin) return;
       const items = await evidenceFromTransfer(dt, { url: tabUrl, route: routeOf(tabUrl) });
       if (items.length === 0) {
         say('붙여넣을 이미지나 텍스트가 없습니다.', 'warn');
@@ -660,6 +695,10 @@ export function usePinProof() {
     removeRecord,
     tabUrl,
     origin,
+    /** localhost 가 아닌 http(s) 탭이면 그 사이트의 권한 패턴 */
+    sitePattern: pattern,
+    enableSite,
+    disableSite,
     connection,
     folderName,
     draft,

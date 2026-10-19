@@ -28,10 +28,23 @@ export function App() {
     return (
       <div className="panel">
         <Brand theme={theme} />
-        <div className="empty">
-          <p className="empty-title">localhost 페이지에서 동작합니다</p>
-          <p className="muted">개발 중인 앱 탭(http://localhost:포트 또는 127.0.0.1)을 열면 여기에 기록 도구가 나타납니다.</p>
-        </div>
+        {bn.sitePattern ? (
+          <div className="empty">
+            <p className="empty-title">이 사이트에서는 꺼져 있습니다</p>
+            <p className="muted">
+              <span className="mono">{new URL(bn.tabUrl).host}</span> 같은 배포 주소는 사이트별로 켭니다. 켜면 이 탭을 새로고침하고,
+              연결한 로컬 프로젝트 폴더에 기록을 쌓습니다.
+            </p>
+            <button className="btn primary block" onClick={bn.enableSite}>
+              이 사이트에서 PinProof 켜기
+            </button>
+          </div>
+        ) : (
+          <div className="empty">
+            <p className="empty-title">localhost 페이지에서 동작합니다</p>
+            <p className="muted">개발 중인 앱 탭(http://localhost:포트 또는 127.0.0.1)을 열면 여기에 기록 도구가 나타납니다. 배포 주소는 그 탭에서 이 패널을 열어 켤 수 있습니다.</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -142,6 +155,14 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
         <span className={`dot ${bn.connection}`} title={bn.connection === 'granted' ? '연결됨' : '권한 필요'} />
         <ThemeButton theme={theme} />
       </div>
+      {bn.sitePattern && (
+        <p className="site-on muted small">
+          직접 켠 사이트입니다 ·{' '}
+          <button className="link" onClick={bn.disableSite} title="이 사이트에서 PinProof 를 끄고 탭을 새로고침합니다">
+            끄기
+          </button>
+        </p>
+      )}
       {bn.connection === 'none' && (
         <button className="btn primary block" onClick={bn.connect}>
           프로젝트 폴더 연결

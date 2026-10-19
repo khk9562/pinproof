@@ -33,6 +33,10 @@ export async function connectFolder(
   return true;
 }
 
+/** manifest 에 고정으로 들어 있는 로컬 개발 주소 */
+export const LOCAL_PATTERNS = ['http://localhost/*', 'http://127.0.0.1/*'];
+
+/** 로컬 개발 주소(localhost·127.0.0.1)인지. 여기서는 따로 켜지 않아도 동작한다 */
 export function isSupportedUrl(url: string | undefined): boolean {
   if (!url) return false;
   try {
@@ -40,6 +44,18 @@ export function isSupportedUrl(url: string | undefined): boolean {
     return u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
   } catch {
     return false;
+  }
+}
+
+/** 사이트별로 켤 수 있는 주소(http/https)면 권한 패턴(예: http://192.168.0.92/*), 아니면 null. 포트는 패턴에 넣지 않는다 */
+export function sitePattern(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return `${u.protocol}//${u.hostname}/*`;
+  } catch {
+    return null;
   }
 }
 
