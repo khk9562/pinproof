@@ -16,10 +16,12 @@ export type ToContent =
  */
 export const PANEL_PORT = 'pinproof-panel';
 
-/** 페이지 위 마커 하나 (작성 중 기록의 증거 = letter 있음, 미분류 = letter 없음) */
+/** 페이지 위 마커 하나 = 대기 중인 항목 하나 */
 export interface MarkerInfo {
   uid: string;
-  letter?: string;
+  /** 항목 번호(#13) */
+  num: number;
+  category: string;
   kind: EvidenceKind;
   /**
    * 담은 화면의 주소(경로 + ?쿼리 + #해시). 마커는 지금 주소가 이것과 같을 때만 보인다.
@@ -39,11 +41,11 @@ export interface MarkerInfo {
 }
 
 export interface OverlayState {
-  /** 작성 중인 기록. 없으면 담는 증거는 미분류로 간다 */
-  record: { id: number; title: string; count: number } | null;
-  /** 다음에 담으면 붙을 문자(작성 중 기록이 없으면 null) */
-  nextLetter: string | null;
-  inboxCount: number;
+  /** 지금 담을 카테고리와 그 카테고리의 대기 항목 수(툴바 칩) */
+  category: string;
+  pending: number;
+  /** 다음에 담으면 붙을 번호(팝오버 임시 마커). 폴더 연결 전이면 null */
+  nextNumber: number | null;
   markers: MarkerInfo[];
 }
 
@@ -51,10 +53,7 @@ export interface OverlayState {
 export type PortToContent = { type: 'bn:state'; state: OverlayState };
 
 /** 페이지 위 편집 팝오버에서 고친 내용 (content → 패널) */
-export type EvidenceEdit =
-  | { action: 'note'; note: string }
-  | { action: 'delete' }
-  | { action: 'move' };
+export type EvidenceEdit = { action: 'note'; note: string } | { action: 'delete' };
 
 export interface NetworkSnapshot {
   url: string;

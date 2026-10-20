@@ -1,14 +1,20 @@
 import { appendExclude, WORKFLOW_MD, WORKFLOW_VERSION, workflowVersionOf } from './templates';
 import {
   idFromFileName,
+  itemFileName,
+  itemIdFromFileName,
   mergeWithExisting,
+  parseItemSummary,
+  renderItem,
+  statusOf,
+  withStatus,
   padId,
   parseSummary,
   recordFileName,
   renderRecord,
   assetPath,
 } from './markdown';
-import { BugRecord, RecordSummary } from './types';
+import { BugRecord, DEFAULT_CATEGORY, Item, ItemSummary, RecordSummary } from './types';
 
 const NOTES_DIR = '.pinproof';
 const ARCHIVE_DIR = 'archive';
@@ -354,4 +360,110 @@ async function deleteRecordNow(root: Dir, id: number, archived: boolean): Promis
 export async function readRecordText(root: Dir, summary: RecordSummary): Promise<string | null> {
   const dir = await getDir(root, summary.archived ? [NOTES_DIR, ARCHIVE_DIR] : [NOTES_DIR], false);
   return dir ? readText(dir, summary.fileName) : null;
+}
+
+// ---------- 항목(items/): 항목 하나 = md 하나, 카테고리로 묶음 ----------
+
+const ITEMS_DIR = 'items';
+const CATEGORIES_FILE = 'categories.json';
+
+async function itemsDir(root: Dir, archived: boolean, create: boolean): Promise<Dir | null> {
+  return getDir(root, archived ? [NOTES_DIR, ITEMS_DIR, ARCHIVE_DIR] : [NOTES_DIR, ITEMS_DIR], create);
+}
+
+/**
+ * 항목을 md + 스크린샷으로 쓴다. 처리 기록 섹션은 보존한다.
+ * 파일에 이미 status: 완료(에이전트가 표시)가 있으면 익스텐션이 대기로 되돌리지 않는다.
+ */
+export function writeItem(root: Dir, item: Item): Promise<void> {
+  return serial(async () => {
+    const dir = (await itemsDir(root, false, true))!;
+    const name = itemFileName(item.id);
+    const existing = await readText(dir, name);
+    const keep = existing && statusOf(existing) === '완료' && item.status === '대기' ? { ...item, status: '완료' as const } : item;
+    const assets = (await getDir(dir, [ASSETS_DIR], true))!;
+    const shot = `${padId(item.id)}.png`;
+    if (item.evidence.screenshot) await writeFile(assets, shot, dataUrlToBlob(item.evidence.screenshot));
+    else if (await exists(assets, shot, 'file')) await assets.removeEntry(shot);
+    await writeFile(dir, name, mergeWithExisting(renderItem(keep), existing));
+  });
+}
+
+export async function listItems(root: Dir): Promise<ItemSummary[]> {
+  const out: ItemSummary[] = [];
+  for (const archived of [false, true]) {
+    const dir = await itemsDir(root, archived, false);
+    for (const name of await listNames(dir)) {
+      if (itemIdFromFileName(name) === null) continue;
+      const text = await readText(dir!, name);
+      const summary = text && parseItemSummary(text, name, archived);
+      if (summary) out.push(summary);
+    }
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
+
+/** 보관(archived=true)·되돌리기(false): md 와 스크린샷을 옮긴다. 되돌리면 상태를 대기로 */
+export function moveItem(root: Dir, id: number, toArchive: boolean): Promise<void> {
+  return serial(async () => {
+    const from = (await itemsDir(root, !toArchive, true))!;
+    const to = (await itemsDir(root, toArchive, true))!;
+    const name = itemFileName(id);
+    const text = await readText(from, name);
+    if (text === null) throw new Error(`항목 #${padId(id)} 파일을 찾을 수 없습니다.`);
+    await writeFile(to, name, toArchive ? text : withStatus(text, '대기'));
+    await from.removeEntry(name);
+    const shot = `${padId(id)}.png`;
+    const fromAssets = await getDir(from, [ASSETS_DIR], false);
+    if (fromAssets && (await exists(fromAssets, shot, 'file'))) {
+      await moveFile(fromAssets, (await getDir(to, [ASSETS_DIR], true))!, shot);
+    }
+  });
+}
+
+/** 항목 삭제(되돌릴 수 없음): md 와 스크린샷 */
+export function deleteItem(root: Dir, id: number, archived: boolean): Promise<void> {
+  return serial(async () => {
+    const dir = await itemsDir(root, archived, false);
+    if (!dir) return;
+    const name = itemFileName(id);
+    if (await exists(dir, name, 'file')) await dir.removeEntry(name);
+    const assets = await getDir(dir, [ASSETS_DIR], false);
+    const shot = `${padId(id)}.png`;
+    if (assets && (await exists(assets, shot, 'file'))) await assets.removeEntry(shot);
+  });
+}
+
+/** 다음 항목 번호: 기존 기록(보관 포함)과 항목(보관 포함)을 통틀어 가장 큰 번호 + 1 — "/pinproof 7" 이 겹치지 않게 */
+export async function nextItemId(root: Dir): Promise<number> {
+  let max = (await nextRecordId(root)) - 1;
+  for (const archived of [false, true]) {
+    for (const name of await listNames(await itemsDir(root, archived, false))) {
+      const id = itemIdFromFileName(name);
+      if (id !== null && id > max) max = id;
+    }
+  }
+  return max + 1;
+}
+
+/** 카테고리 목록(비어 있는 카테고리도 유지). 미분류는 늘 맨 앞 */
+export async function readCategories(root: Dir): Promise<string[]> {
+  const notes = await getDir(root, [NOTES_DIR], false);
+  let list: string[] = [];
+  try {
+    const text = notes ? await readText(notes, CATEGORIES_FILE) : null;
+    const parsed = text ? JSON.parse(text) : [];
+    if (Array.isArray(parsed)) list = parsed.filter((c): c is string => typeof c === 'string' && c.trim() !== '');
+  } catch {
+    /* 사람이 고치다 깨진 파일이면 기본값으로 */
+  }
+  return [DEFAULT_CATEGORY, ...list.filter((c) => c !== DEFAULT_CATEGORY)].filter((c, i, a) => a.indexOf(c) === i);
+}
+
+export function writeCategories(root: Dir, list: string[]): Promise<void> {
+  return serial(async () => {
+    const notes = (await getDir(root, [NOTES_DIR], true))!;
+    const clean = [DEFAULT_CATEGORY, ...list.filter((c) => c.trim() && c !== DEFAULT_CATEGORY)];
+    await writeFile(notes, CATEGORIES_FILE, `${JSON.stringify(clean, null, 2)}\n`);
+  });
 }

@@ -1,4 +1,4 @@
-import { BugRecord, Evidence, KIND_LABEL, RecordSummary } from './types';
+import { BugRecord, Evidence, EvidenceKind, Item, ItemStatus, ItemSummary, KIND_LABEL, RecordSummary } from './types';
 
 /** Claude가 처리 후 덧붙이는 섹션. 이 줄부터 끝까지는 익스텐션이 절대 덮어쓰지 않는다. */
 export const RESULT_HEADING = '## 처리 기록';
@@ -96,15 +96,21 @@ export function referenceLine(e: Evidence): string | undefined {
 }
 
 function evidenceSection(record: BugRecord, e: Evidence): string {
+  const image = e.screenshot ? `![${e.letter}](${assetPath(record.id, e.letter!)})` : undefined;
+  return evidenceBody(e, `### ${e.letter}. ${KIND_LABEL[e.kind]} — ${e.route}`, image);
+}
+
+/** 증거 하나의 md 본문. heading 은 제목 줄, image 는 스크린샷·붙여넣은 이미지의 md 링크 */
+function evidenceBody(e: Evidence, heading: string, image: string | undefined): string {
   const lines: string[] = [];
-  lines.push(`### ${e.letter}. ${KIND_LABEL[e.kind]} — ${e.route}`);
+  lines.push(heading);
   lines.push(`- URL: ${e.url}`);
   if (e.pageTitle) lines.push(`- 페이지 제목: ${e.pageTitle}`);
   if (e.note.trim()) lines.push(`- 메모: ${e.note.trim()}`);
 
   if (e.kind === 'paste') {
     lines.push('- 사용자가 클립보드에서 붙여넣은 자료 (붙여넣을 때 열려 있던 페이지 기준 URL)');
-    if (e.screenshot) lines.push(`- 이미지: ![${e.letter}](${assetPath(record.id, e.letter!)})`);
+    if (image) lines.push(`- 이미지: ${image}`);
     if (e.pastedText) {
       lines.push('');
       lines.push(fence(e.pastedText));
@@ -162,7 +168,7 @@ function evidenceSection(record: BugRecord, e: Evidence): string {
   }
 
   lines.push(`- 화면 폭: ${e.viewportWidth}px`);
-  if (e.screenshot) lines.push(`- 스크린샷: ![${e.letter}](${assetPath(record.id, e.letter!)})`);
+  if (image) lines.push(`- 스크린샷: ${image}`);
   if (e.html) {
     lines.push('');
     lines.push(fence(e.html, 'html'));
@@ -187,7 +193,7 @@ export function renderRecord(record: BugRecord): string {
   if (record.updated) out.push(`updated: ${record.updated}`);
   out.push(`app: ${record.app}`);
   // 배포 주소(사이트별로 켠 곳)에서 모은 기록인지. WORKFLOW 가 소스 위치·버전 차이를 다르게 다룬다
-  out.push(`env: ${/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(record.app) ? 'local' : 'deployed'}`);
+  out.push(`env: ${envOf(record.app)}`);
   out.push(`evidence: ${record.evidence.length}`);
   out.push('---');
   out.push('');
@@ -222,8 +228,7 @@ function findResultHeading(text: string): number {
   return idx === -1 ? -1 : idx + 1;
 }
 
-/** 목록 표시용으로 frontmatter만 읽는다 */
-export function parseSummary(text: string, fileName: string, archived: boolean): RecordSummary | null {
+function frontmatter(text: string): Record<string, string> | null {
   const m = text.match(/^---\n([\s\S]*?)\n---/);
   if (!m) return null;
   const fields: Record<string, string> = {};
@@ -232,14 +237,27 @@ export function parseSummary(text: string, fileName: string, archived: boolean):
     if (i === -1) continue;
     fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
+  return fields;
+}
+
+/** yaml 문자열(따옴표)이면 풀고, 사람이 따옴표 없이 고친 값도 그대로 받는다 */
+function unquote(value: string | undefined): string {
+  if (value === undefined) return '';
+  try {
+    const v = JSON.parse(value);
+    return typeof v === 'string' ? v : value;
+  } catch {
+    return value;
+  }
+}
+
+/** 목록 표시용으로 frontmatter만 읽는다 */
+export function parseSummary(text: string, fileName: string, archived: boolean): RecordSummary | null {
+  const fields = frontmatter(text);
+  if (!fields) return null;
   const id = Number(fields.id);
   if (!Number.isFinite(id)) return null;
-  let title = fields.title ?? '';
-  try {
-    title = JSON.parse(title);
-  } catch {
-    /* 사람이 직접 고친 경우 따옴표 없이도 허용 */
-  }
+  const title = unquote(fields.title);
   return {
     id,
     title,
@@ -266,6 +284,97 @@ export function copyPrompt(fileName: string, archived = false): string {
   const path = archived ? `.pinproof/archive/${fileName}` : `.pinproof/${fileName}`;
   return (
     `\`.pinproof/WORKFLOW.md\` 절차대로 \`${path}\` 기록 건을 처리해줘.\n` +
+    `지금 폴더에 \`.pinproof/\`가 없으면 \`git worktree list\` 첫 줄(메인 워크트리)의 \`.pinproof/\`에서 찾아 읽고, 코드 수정은 지금 폴더에서 해줘.`
+  );
+}
+
+// ---------- 항목(items/) ----------
+
+export function envOf(app: string): 'local' | 'deployed' {
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(app) ? 'local' : 'deployed';
+}
+
+export function itemFileName(id: number): string {
+  return `${padId(id)}.md`;
+}
+
+/** items/ 기준 스크린샷 경로 */
+export function itemAssetPath(id: number): string {
+  return `assets/${padId(id)}.png`;
+}
+
+export function itemIdFromFileName(name: string): number | null {
+  const m = name.match(/^(\d{3,})\.md$/);
+  return m ? Number(m[1]) : null;
+}
+
+/** 익스텐션이 소유하는 항목 본문(처리 기록 이전까지) */
+export function renderItem(item: Item): string {
+  const e = item.evidence;
+  const out: string[] = [];
+  out.push('---');
+  out.push(`id: ${item.id}`);
+  out.push(`category: ${yamlString(item.category)}`);
+  out.push(`status: ${item.status}`);
+  if (item.sent) out.push(`sent: ${item.sent}`);
+  out.push(`created: ${item.created}`);
+  if (item.updated) out.push(`updated: ${item.updated}`);
+  out.push(`app: ${item.app}`);
+  out.push(`env: ${envOf(item.app)}`);
+  out.push(`kind: ${KIND_LABEL[e.kind]}`);
+  out.push(`page: ${yamlString(pagePath(e.url))}`);
+  out.push(`note: ${yamlString(e.note.trim())}`);
+  out.push('---');
+  out.push('');
+  out.push(`# #${padId(item.id)} · ${item.category}`);
+  out.push('');
+  const image = e.screenshot ? `![${padId(item.id)}](${itemAssetPath(item.id)})` : undefined;
+  out.push(evidenceBody(e, `## ${KIND_LABEL[e.kind]} — ${e.route}`, image));
+  out.push('');
+  return out.join('\n');
+}
+
+/** 파일 frontmatter 의 처리 상태(에이전트가 완료로 바꾼다) */
+export function statusOf(text: string): ItemStatus {
+  return frontmatter(text)?.status === '완료' ? '완료' : '대기';
+}
+
+/** frontmatter 의 status 줄만 바꾼다(보관함에서 되돌릴 때 대기로) */
+export function withStatus(text: string, status: ItemStatus): string {
+  return text.replace(/^(---\n[\s\S]*?)^status:.*$/m, `$1status: ${status}`);
+}
+
+export function parseItemSummary(text: string, fileName: string, archived: boolean): ItemSummary | null {
+  const f = frontmatter(text);
+  if (!f) return null;
+  const id = Number(f.id);
+  if (!Number.isFinite(id)) return null;
+  return {
+    id,
+    category: unquote(f.category) || '미분류',
+    status: f.status === '완료' ? '완료' : '대기',
+    sent: f.sent || undefined,
+    created: f.created ?? '',
+    app: f.app || undefined,
+    // 파일에는 한국어 라벨(요소·네트워크 …)로 적혀 있다
+    kind: (Object.keys(KIND_LABEL) as EvidenceKind[]).find((k) => KIND_LABEL[k] === f.kind || k === f.kind),
+    page: unquote(f.page) || undefined,
+    note: unquote(f.note),
+    fileName,
+    archived,
+    hasResult: findResultHeading(text) !== -1,
+  };
+}
+
+/** 항목 여러 개(또는 하나)를 넘기는 프롬프트. 넘길 파일을 하나하나 적어, 에이전트가 이미 넘긴 항목을 기억할 필요가 없게 한다 */
+export function itemsPrompt(fileNames: string[], category?: string): string {
+  const head = category
+    ? `\`.pinproof/WORKFLOW.md\` 절차대로 "${category}" 카테고리의 아래 항목 ${fileNames.length}건을 처리해줘(목록에 없는 항목은 건드리지 마).`
+    : `\`.pinproof/WORKFLOW.md\` 절차대로 아래 항목을 처리해줘.`;
+  return (
+    `${head}\n` +
+    fileNames.map((n) => `- \`.pinproof/items/${n}\``).join('\n') +
+    `\n처리를 끝낸 항목은 그 파일의 \`status\`를 \`완료\`로 바꾸고 \`## 처리 기록\`을 남겨줘.\n` +
     `지금 폴더에 \`.pinproof/\`가 없으면 \`git worktree list\` 첫 줄(메인 워크트리)의 \`.pinproof/\`에서 찾아 읽고, 코드 수정은 지금 폴더에서 해줘.`
   );
 }

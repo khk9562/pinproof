@@ -112,3 +112,38 @@ export interface RecordSummary {
   /** 기록을 만든 앱 주소(frontmatter app). 옛 기록처럼 없으면 undefined */
   app?: string;
 }
+
+/** 항목을 담을 기본 카테고리(지울 수 없음) */
+export const DEFAULT_CATEGORY = '미분류';
+
+/** 대기: 아직 처리 안 됨 · 완료: 에이전트가 처리를 끝냄(패널이 바로 보관한다) */
+export type ItemStatus = '대기' | '완료';
+
+/** 항목 하나 = md 하나(.pinproof/items/NNN.md). 카테고리로 묶고, 항목마다 처리 상태를 갖는다 */
+export interface Item {
+  id: number;
+  category: string;
+  status: ItemStatus;
+  /** 프롬프트로 에이전트에게 넘긴 시각(마지막). 카테고리째 복사할 때 이미 넘긴 항목은 빼는 데 쓴다 */
+  sent?: string;
+  created: string;
+  updated?: string;
+  app: string;
+  evidence: Evidence;
+}
+
+/** items/ 폴더를 읽어 얻는 목록용 요약(frontmatter) */
+export interface ItemSummary {
+  id: number;
+  category: string;
+  status: ItemStatus;
+  sent?: string;
+  created: string;
+  app?: string;
+  kind?: EvidenceKind;
+  page?: string;
+  note: string;
+  fileName: string;
+  archived: boolean;
+  hasResult: boolean;
+}
