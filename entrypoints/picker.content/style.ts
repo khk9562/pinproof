@@ -12,7 +12,7 @@ ${TOKENS_CSS}
 :host {
   /* Paperlogy 는 Shadow DOM 안에서 등록할 수 없어(호스트 문서에 넣어야 함) 대체 폰트부터 */
   --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  --radius-s: 6px; --radius: var(--radius-input); --radius-l: var(--radius-control);
+  --radius-s: var(--radius-paper); --radius: var(--radius-input); --radius-l: var(--radius-control);
   --t: var(--dur-tap) var(--ease-out);
   /* 작은 마커용: 떠 있는 카드 그림자(--shadow-float)는 22px 원에는 거의 안 보인다 */
   --shadow-pin: 0 2px 6px rgb(0 0 0 / 0.35);
@@ -29,11 +29,11 @@ kbd {
   border: 1px solid var(--color-line); border-bottom-width: 2px; border-radius: var(--radius-s);
   background: var(--color-surface); font: 500 11px/1 var(--font-mono); color: var(--color-ink-soft);
 }
-.dot3 { width: 3px; height: 3px; border-radius: 50%; background: var(--color-ink-faint); margin: 0 4px; flex: none; }
+.dot3 { width: 3px; height: 3px; border-radius: var(--radius-paper); background: var(--color-ink-faint); margin: 0 4px; flex: none; }
 
 /* ---------- 고르는 동안의 하이라이트 ---------- */
 .box {
-  position: fixed; border: 2px solid var(--color-ink); border-radius: 2px; background: var(--color-wash);
+  position: fixed; border: 2px solid var(--color-ink); border-radius: var(--radius-paper); background: var(--color-wash);
   box-shadow: var(--ring-paper), inset var(--ring-paper); pointer-events: none; transition: left .08s ease, top .08s ease, width .08s ease, height .08s ease;
 }
 .label {
@@ -118,7 +118,7 @@ kbd {
 .mode-item:hover, .mode-item:focus-visible { background: var(--color-wash); color: var(--color-ink); outline: none; }
 .mode-item[aria-checked="true"] { color: var(--color-ink); font-weight: 600; }
 .mode-item .sp { flex: 1; }
-.guide .mode-name::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color-ink); }
+.guide .mode-name::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-paper); background: var(--color-ink); }
 .guide .hint { display: inline-flex; align-items: center; gap: 4px; color: var(--color-ink-soft); padding: 0 6px; white-space: nowrap; }
 .guide .stop { margin-left: 2px; }
 /* 모드 중 압정 로고: "진행 중" 숨쉬기 — 1.2초 주기 투명도 1 → 0.3 → 1 (유일한 반복 모션) */
@@ -131,7 +131,7 @@ kbd {
 }
 .rec .cat { max-width: 120px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .rec.loose { background: var(--color-wash); color: var(--color-ink-soft); }
-.rec.loose::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--color-ink-faint); }
+.rec.loose::before { content: ""; width: 7px; height: 7px; border-radius: var(--radius-paper); background: var(--color-ink-faint); }
 .rec .n { display: inline-block; height: 16px; line-height: 16px; overflow: hidden; vertical-align: middle; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rec .n i { display: block; height: 16px; font-style: normal; }
 .rec .n .roll { animation: pp-roll .2s var(--ease-out) forwards; }

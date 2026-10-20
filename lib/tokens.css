@@ -52,10 +52,11 @@
   --text-title: 22px;
   --tracking-label: 0.16em;
 
-  --radius-paper: 3px;
-  --radius-input: 8px;
-  --radius-control: 10px;
-  --radius-pill: 999px;
+  /* 티켓 느낌 시험(2026-10-20): 모서리를 전부 2px 로. DESIGN 값은 paper 3 · input 8 · control 10 · pill 999 */
+  --radius-paper: 2px;
+  --radius-input: 2px;
+  --radius-control: 2px;
+  --radius-pill: 2px;
 
   --shadow-float: 0 30px 70px -30px rgb(0 0 0 / 0.6);
   /* 호스트 페이지 바탕을 모르는 곳(하이라이트·마커)에 쓰는 바깥 링 */

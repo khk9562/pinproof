@@ -107,6 +107,30 @@ function PinLogo({ size = 18 }: { size?: number }) {
   );
 }
 
+/** 접고 펼치는 곳의 화살표. 접혀 있으면 아래, 펼치면 위(CSS 가 돌린다). 모양은 Lucide chevron-down */
+function Chevron() {
+  return (
+    <svg className="chev" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** 담을 곳(카테고리) 표시. 모양은 Lucide shopping-basket */
+function BasketIcon() {
+  return (
+    <svg className="basket" viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m15 11-1 9" />
+      <path d="m19 11-4-7" />
+      <path d="M2 11h20" />
+      <path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4" />
+      <path d="M4.5 15.5h15" />
+      <path d="m5 11 4-7" />
+      <path d="m9 11 1 9" />
+    </svg>
+  );
+}
+
 /** 제목 글자는 Chrome 사이드 패널 머리가 이미 보여주므로 아이콘만 둔다 */
 function Brand({ theme }: { theme: [ThemePref, () => void] }) {
   return (
@@ -259,9 +283,9 @@ function CategoryBar({ bn }: { bn: PinProof }) {
   }
   return (
     <div className="cat-bar">
-      <label className="cat-pick">
-        <span>담을 곳</span>
-        <select value={bn.category} onChange={(e) => bn.setCategory(e.target.value)}>
+      <label className="cat-pick" title="담을 곳">
+        <BasketIcon />
+        <select aria-label="담을 곳" value={bn.category} onChange={(e) => bn.setCategory(e.target.value)}>
           {names.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -585,7 +609,10 @@ function ItemRow(props: { bn: PinProof; view: ItemView; mode: 'mine' | 'other' |
               {ev.kind !== 'paste' && evidenceSummary(ev) && <div className="sum">{evidenceSummary(ev)}</div>}
               {ev.kind === 'network' && (
                 <details className="net">
-                  <summary>호출 목록</summary>
+                  <summary>
+                    <Chevron />
+                    호출 목록
+                  </summary>
                   {(ev.requests ?? []).map((r, i) => (
                     <div key={i} className="net-row mono">
                       <span className={r.status === 0 || r.status >= 400 ? 'bad' : ''}>{r.status || 'ERR'}</span> {r.method}{' '}
@@ -680,8 +707,9 @@ function Folded(props: { title: string; count: number; className?: string; child
   return (
     <section className={`section ${props.className ?? ''}`}>
       <button className="section-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span>
-          {open ? '▾' : '▸'} {props.title}
+        <span className="section-title">
+          <Chevron />
+          {props.title}
         </span>
         <span className="count">{props.count}</span>
       </button>
