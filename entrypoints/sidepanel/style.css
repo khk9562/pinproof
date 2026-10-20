@@ -68,20 +68,53 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .btn.block { width: 100%; }
 /* 주 동작(연결·켜기)은 조금 크게 누르게 */
 .btn.block, .conn-actions .btn { height: 36px; }
-.btn:disabled { opacity: 0.45; cursor: default; transform: none; }
-
-/* 담을 곳(카테고리) 고르기 · 만들기 · 이름 바꾸기 */
-.cat-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
-.cat-pick { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.cat-pick .basket { flex: none; color: var(--color-ink-soft); }
-.cat-pick select {
-  max-width: 190px; height: 28px; padding: 0 6px; border: 1px solid var(--color-line); border-radius: var(--radius-s);
-  background: var(--color-wash); color: var(--color-ink); font: inherit; font-weight: 600; cursor: pointer; transition: border-color var(--t);
+/* 꺼진 버튼: 주 버튼도 채움을 빼고 옅은 테두리만 — 눌러도 아무 일 없음을 바로 알게. hover·눌림 효과도 끈다 */
+.btn:disabled, .btn:disabled:hover, .btn:disabled:active {
+  background: transparent; border-color: var(--color-line); color: var(--color-ink-faint); opacity: 1; transform: none; cursor: not-allowed;
 }
-.cat-pick select:hover { border-color: var(--color-ink-faint); }
-.cat-pick select:focus { outline: none; border-color: var(--color-ink); }
-.cat-tools { display: inline-flex; gap: 10px; margin-left: auto; }
-.cat-bar .btn { height: 28px; padding: 0 12px; font-size: 12px; }
+
+/* 담을 곳(카테고리): 바구니 아이콘 + 직접 만든 드롭다운 */
+.cat-bar { position: relative; display: flex; align-items: center; gap: 8px; }
+.cat-bar > .basket { flex: none; color: var(--color-ink-soft); }
+.cat-trigger {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 8px 0 10px;
+  border: 1px solid var(--color-line); border-radius: var(--radius-s); background: var(--color-wash); font-weight: 700; cursor: pointer;
+  transition: border-color var(--t), background var(--t);
+}
+.cat-trigger:hover { border-color: var(--color-ink-faint); }
+.cat-trigger[aria-expanded="true"] { border-color: var(--color-ink); }
+.cat-trigger-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cat-menu {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 24px; right: 0; padding: 4px;
+  border: 1px solid var(--color-line); border-radius: var(--radius-l); background: var(--color-surface); box-shadow: var(--shadow-float);
+  animation: pp-menu-in var(--dur-quick) var(--ease-out) both;
+}
+@keyframes pp-menu-in { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: none; } }
+.cat-menu ul { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; }
+.cat-opt { display: flex; align-items: center; gap: 2px; }
+.cat-opt-pick, .cat-add {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; border: 0; border-radius: var(--radius-s);
+  background: transparent; text-align: left; cursor: pointer; transition: background var(--t);
+}
+.cat-opt-pick:hover, .cat-add:hover { background: var(--color-wash); }
+.cat-opt-pick:active, .cat-add:active { background: var(--color-wash-strong); }
+.cat-opt-pick:focus-visible, .cat-add:focus-visible, .cat-opt-icon:focus-visible { outline-offset: -2px; }
+.cat-opt-check { flex: none; width: 14px; display: grid; place-items: center; }
+.cat-opt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cat-opt.current .cat-opt-name { font-weight: 700; }
+.cat-opt-icon {
+  flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-s);
+  background: transparent; color: var(--color-ink-faint); cursor: pointer; transition: background var(--t), color var(--t), transform var(--t);
+}
+.cat-opt-icon:hover { background: var(--color-wash); color: var(--color-ink); }
+.cat-opt-icon.danger:hover { background: var(--color-wash-strong); }
+.cat-opt-icon:active { transform: scale(0.92); }
+.cat-menu-foot { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--color-line); }
+.cat-add { width: 100%; color: var(--color-ink-soft); }
+.cat-add:hover { color: var(--color-ink); }
+.cat-edit { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 4px; }
+.cat-edit .cat-input { height: 30px; }
+.cat-edit .btn { height: 30px; padding: 0 12px; font-size: 12px; flex: none; }
 .cat-input, .ev-note {
   width: 100%; padding: 5px 9px; border: 1px solid var(--color-line); border-radius: var(--radius-s); background: var(--color-wash);
   transition: border-color var(--t);
@@ -128,7 +161,12 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   font-size: 12px; text-align: center; cursor: text; background: var(--color-surface); transition: border-color var(--t), background var(--t);
 }
 .paste-zone:focus, .paste-zone.over { outline: none; border-color: var(--color-ink); color: var(--color-ink); background: var(--color-wash-strong); }
-.paste-zone kbd { font: 600 10px/1 var(--font-mono); padding: 2px 4px; border-radius: var(--radius-paper); background: var(--color-wash); }
+/* 키 모양 상자: 아래 테두리를 두껍게 해 눌리는 키처럼 */
+.paste-zone kbd {
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; margin: 0 1px; vertical-align: 1px;
+  border: 1px solid var(--color-line-strong); border-bottom-width: 2px; border-radius: var(--radius-paper);
+  background: var(--color-bg); color: var(--color-ink); font: 600 11px/1 var(--font-mono);
+}
 
 /* 증거 한 줄 목록 */
 .ev-list { display: flex; flex-direction: column; margin: 2px -6px 0; }

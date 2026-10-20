@@ -192,18 +192,39 @@ try {
     };
   });
   panel.on('dialog', (d) => d.accept());
-  const catPick = panel.locator('.cat-pick select');
+  // 담을 곳: 직접 만든 드롭다운(줄마다 고르기 · 연필 · 휴지통, 맨 아래 새 카테고리)
+  const catTrigger = panel.locator('.cat-trigger');
+  const catMenu = panel.locator('.cat-menu');
+  const curCat = () => catTrigger.getAttribute('data-value');
+  const openCatMenu = async () => {
+    if ((await catTrigger.getAttribute('aria-expanded')) !== 'true') await catTrigger.click();
+    await catMenu.waitFor({ timeout: 3000 });
+  };
+  const pickCategory = async (name) => {
+    await openCatMenu();
+    await catMenu.locator('.cat-opt-pick', { has: panel.locator('.cat-opt-name', { hasText: new RegExp(`^${name}$`) }) }).click();
+    await panel.waitForTimeout(200);
+  };
   const current = panel.locator('.cat.current');
   const rows = () => current.locator('.ev');
   const addCategory = async (name) => {
-    await panel.getByRole('button', { name: '+ 새 카테고리' }).click();
+    await openCatMenu();
+    await catMenu.getByRole('button', { name: '새 카테고리' }).click();
     await panel.getByLabel('새 카테고리 이름').fill(name);
-    await panel.getByRole('button', { name: '만들기' }).click();
+    await catMenu.getByRole('button', { name: '만들기', exact: true }).click();
     await panel.waitForTimeout(300);
   };
-  check((await catPick.inputValue()) === '미분류', '처음 담을 곳은 미분류');
+  check((await curCat()) === '미분류', '처음 담을 곳은 미분류');
+  await openCatMenu();
+  check(
+    (await catMenu.locator('.cat-opt').count()) === 1 && !(await catMenu.locator('.cat-opt-icon').count()) && (await catMenu.locator('.cat-add').count()) === 1,
+    '드롭다운: 미분류에는 연필·휴지통 없음, 맨 아래 새 카테고리',
+  );
+  await panel.keyboard.press('Escape');
+  check(!(await catMenu.count()) && (await catTrigger.evaluate((el) => el === document.activeElement)), 'Esc 로 닫으면 드롭다운 버튼으로 포커스');
   await addCategory('데이터 정합성');
-  check((await catPick.inputValue()) === '데이터 정합성' && (await current.locator('.cat-name').textContent()) === '데이터 정합성', '새 카테고리를 만들면 그곳에 담기 시작');
+  check((await curCat()) === '데이터 정합성' && (await current.locator('.cat-name').textContent()) === '데이터 정합성' && !(await catMenu.count()), '새 카테고리를 만들면 그곳에 담기 시작(드롭다운은 닫힘)');
+  check(await current.locator('.cat-copy').isDisabled(), '항목이 없는 카테고리는 프롬프트 복사 꺼짐');
   check(JSON.parse(await readOpfs('.pinproof/categories.json')).join(',') === '미분류,데이터 정합성', 'categories.json 에 카테고리 목록');
   await app.waitForTimeout(300);
   const chip = await app.locator('pinproof-overlay .tb .rec').textContent();
@@ -525,21 +546,27 @@ try {
   check((await item(1)).includes('category: "버그"') && (await current.locator('.ev .num').allTextContents()).join(',') === '1', '카테고리 옮기기: frontmatter 한 줄 + 목록 이동');
   await dataCat.getByRole('button', { name: '여기에 담기' }).click();
   await panel.waitForTimeout(300);
-  check((await catPick.inputValue()) === '데이터 정합성', '"여기에 담기"로 담는 곳 바꾸기');
-  await catPick.selectOption('버그');
-  await panel.getByRole('button', { name: '이름 바꾸기' }).click();
+  check((await curCat()) === '데이터 정합성', '"여기에 담기"로 담는 곳 바꾸기');
+  await pickCategory('버그');
+  check((await curCat()) === '버그' && !(await catMenu.count()), '드롭다운에서 고르면 담는 곳이 바뀌고 닫힘');
+  await openCatMenu();
+  await panel.waitForTimeout(400); // 등장 애니메이션이 끝난 뒤
+  await panel.screenshot({ path: path.join(outDir, 'panel-cat-menu.png') });
+  await catMenu.getByRole('button', { name: '"버그" 이름 바꾸기' }).click();
   await panel.getByLabel('바꿀 이름').fill('UI 버그');
-  await panel.getByRole('button', { name: '바꾸기' }).click();
+  await catMenu.getByRole('button', { name: '바꾸기', exact: true }).click();
   await panel.waitForTimeout(600);
   check((await item(1)).includes('category: "UI 버그"') && JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '이름 바꾸기: 목록과 그 카테고리 항목 모두');
-  await panel.locator('.cat-tools').getByRole('button', { name: '삭제' }).click();
+  await openCatMenu();
+  await catMenu.getByRole('button', { name: '"UI 버그" 삭제' }).click();
   await panel.waitForTimeout(300);
   check(JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '대기 항목이 있는 카테고리는 지우지 않음');
   await addCategory('빈 카테고리');
-  await panel.locator('.cat-tools').getByRole('button', { name: '삭제' }).click();
+  await openCatMenu();
+  await catMenu.getByRole('button', { name: '"빈 카테고리" 삭제' }).click();
   await panel.waitForTimeout(300);
-  check(!JSON.parse(await readOpfs('.pinproof/categories.json')).includes('빈 카테고리') && (await catPick.inputValue()) === '미분류', '빈 카테고리 삭제 → 담는 곳은 미분류로');
-  await catPick.selectOption('데이터 정합성');
+  check(!JSON.parse(await readOpfs('.pinproof/categories.json')).includes('빈 카테고리') && (await curCat()) === '미분류', '빈 카테고리 삭제 → 담는 곳은 미분류로');
+  await pickCategory('데이터 정합성');
   await panel.screenshot({ path: path.join(outDir, 'panel.png'), fullPage: true });
 
   // ---------- 이전 이름(.bugnotes/) → .pinproof/ 옮기기 ----------

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -107,28 +107,29 @@ function PinLogo({ size = 18 }: { size?: number }) {
   );
 }
 
-/** 접고 펼치는 곳의 화살표. 접혀 있으면 아래, 펼치면 위(CSS 가 돌린다). 모양은 Lucide chevron-down */
-function Chevron() {
+/** 선 아이콘(24 격자, Lucide 모양). 색은 currentColor */
+const ICON_PATHS = {
+  chevron: ['m6 9 6 6 6-6'],
+  basket: ['m15 11-1 9', 'm19 11-4-7', 'M2 11h20', 'm3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4', 'M4.5 15.5h15', 'm5 11 4-7', 'm9 11 1 9'],
+  pencil: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z', 'm15 5 4 4'],
+  trash: ['M3 6h18', 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6', 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'],
+  check: ['M20 6 9 17l-5-5'],
+  plus: ['M5 12h14', 'M12 5v14'],
+};
+
+function Icon({ name, size = 16, className }: { name: keyof typeof ICON_PATHS; size?: number; className?: string }) {
   return (
-    <svg className="chev" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m6 9 6 6 6-6" />
+    <svg className={className} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICON_PATHS[name].map((d) => (
+        <path key={d} d={d} />
+      ))}
     </svg>
   );
 }
 
-/** 담을 곳(카테고리) 표시. 모양은 Lucide shopping-basket */
-function BasketIcon() {
-  return (
-    <svg className="basket" viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m15 11-1 9" />
-      <path d="m19 11-4-7" />
-      <path d="M2 11h20" />
-      <path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4" />
-      <path d="M4.5 15.5h15" />
-      <path d="m5 11 4-7" />
-      <path d="m9 11 1 9" />
-    </svg>
-  );
+/** 접고 펼치는 곳의 화살표. 접혀 있으면 아래, 펼치면 위(CSS 가 돌린다) */
+function Chevron() {
+  return <Icon name="chevron" size={14} className="chev" />;
 }
 
 /** 제목 글자는 Chrome 사이드 패널 머리가 이미 보여주므로 아이콘만 둔다 */
@@ -240,71 +241,142 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
   );
 }
 
-/** 지금 담을 카테고리: 고르기 · 새로 만들기 · 이름 바꾸기 · 삭제(미분류는 바꾸거나 지울 수 없음) */
+/**
+ * 지금 담을 카테고리. 바구니 아이콘 + 직접 만든 드롭다운:
+ * 줄마다 고르기 · 이름 바꾸기(연필) · 삭제(휴지통), 맨 아래 + 새 카테고리. 미분류는 바꾸거나 지울 수 없다.
+ * 이름 바꾸기·새로 만들기는 목록 안에서 그 줄이 입력칸으로 바뀐다.
+ */
 function CategoryBar({ bn }: { bn: PinProof }) {
-  const [mode, setMode] = useState<null | 'add' | 'rename'>(null);
+  const [open, setOpen] = useState(false);
+  /** 입력 중인 줄: 새 카테고리(add) 또는 이름을 바꿀 카테고리 */
+  const [edit, setEdit] = useState<null | { kind: 'add' } | { kind: 'rename'; from: string }>(null);
   const [name, setName] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const names = bn.categories.includes(bn.category) ? bn.categories : [...bn.categories, bn.category];
-  const start = (m: 'add' | 'rename') => {
-    setMode(m);
-    setName(m === 'rename' ? bn.category : '');
+
+  const close = (focusTrigger = false) => {
+    setOpen(false);
+    setEdit(null);
+    if (focusTrigger) trigger.current?.focus();
+  };
+  // 바깥을 누르면 닫는다
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) close();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const startEdit = (next: { kind: 'add' } | { kind: 'rename'; from: string }) => {
+    setEdit(next);
+    setName(next.kind === 'rename' ? next.from : '');
   };
   const submit = async () => {
-    if (mode === 'add') await bn.addCategory(name);
-    else if (mode === 'rename') await bn.renameCategory(bn.category, name);
-    setMode(null);
+    if (!edit || !name.trim()) return;
+    if (edit.kind === 'add') await bn.addCategory(name);
+    else await bn.renameCategory(edit.from, name);
+    close(true);
   };
-  if (mode) {
-    return (
-      <form
-        className="cat-bar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
+  const pick = (c: string) => {
+    bn.setCategory(c);
+    close(true);
+  };
+  /** 열려 있을 때 ↑↓ 로 줄 사이를 옮기고, Esc 는 입력 중이면 입력만, 아니면 목록을 닫는다(드롭다운 버튼에 포커스가 있어도) */
+  const onMenuKey = (e: ReactKeyboardEvent) => {
+    if (!open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (edit) setEdit(null);
+      else close(true);
+      return;
+    }
+    if (edit || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+    e.preventDefault();
+    const items = [...(root.current?.querySelectorAll<HTMLButtonElement>('.cat-menu .cat-opt-pick, .cat-menu .cat-add') ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = e.key === 'ArrowDown' ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+    items[next]?.focus();
+  };
+
+  const editor = (label: string, action: string) => (
+    <form
+      className="cat-edit"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <input className="cat-input" autoFocus value={name} placeholder={edit?.kind === 'add' ? '예: 데이터 정합성' : ''} aria-label={label} onChange={(e) => setName(e.target.value)} />
+      <button className="btn primary" type="submit" disabled={!name.trim()}>
+        {action}
+      </button>
+    </form>
+  );
+
+  return (
+    <div className="cat-bar" ref={root} onKeyDown={onMenuKey}>
+      <Icon name="basket" className="basket" />
+      <button
+        ref={trigger}
+        className="cat-trigger"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`담을 곳: ${bn.category}`}
+        title="담을 곳"
+        data-value={bn.category}
+        onClick={() => (open ? close() : setOpen(true))}
+        onKeyDown={(e) => {
+          if (!open && e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('.cat-opt.current .cat-opt-pick')?.focus());
+          }
         }}
       >
-        <input
-          className="cat-input"
-          autoFocus
-          value={name}
-          placeholder={mode === 'add' ? '예: 데이터 정합성' : ''}
-          aria-label={mode === 'add' ? '새 카테고리 이름' : '바꿀 이름'}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Escape' && setMode(null)}
-        />
-        <button className="btn primary" type="submit" disabled={!name.trim()}>
-          {mode === 'add' ? '만들기' : '바꾸기'}
-        </button>
-        <button className="btn ghost" type="button" onClick={() => setMode(null)}>
-          취소
-        </button>
-      </form>
-    );
-  }
-  return (
-    <div className="cat-bar">
-      <label className="cat-pick" title="담을 곳">
-        <BasketIcon />
-        <select aria-label="담을 곳" value={bn.category} onChange={(e) => bn.setCategory(e.target.value)}>
-          {names.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button className="link" onClick={() => start('add')}>
-        + 새 카테고리
+        <span className="cat-trigger-name">{bn.category}</span>
+        <Chevron />
       </button>
-      {bn.category !== DEFAULT_CATEGORY && (
-        <span className="cat-tools">
-          <button className="link" onClick={() => start('rename')}>
-            이름 바꾸기
-          </button>
-          <button className="link danger" onClick={() => bn.deleteCategory(bn.category)} title="대기 항목이 없는 카테고리만 지울 수 있습니다">
-            삭제
-          </button>
-        </span>
+      {open && (
+        <div className="cat-menu">
+          <ul>
+            {names.map((c) =>
+              edit?.kind === 'rename' && edit.from === c ? (
+                <li key={c} className="cat-opt editing">
+                  {editor('바꿀 이름', '바꾸기')}
+                </li>
+              ) : (
+                <li key={c} className={`cat-opt ${c === bn.category ? 'current' : ''}`}>
+                  <button className="cat-opt-pick" aria-current={c === bn.category ? 'true' : undefined} onClick={() => pick(c)}>
+                    <span className="cat-opt-check">{c === bn.category && <Icon name="check" size={14} />}</span>
+                    <span className="cat-opt-name">{c}</span>
+                  </button>
+                  {c !== DEFAULT_CATEGORY && (
+                    <>
+                      <button className="cat-opt-icon" aria-label={`"${c}" 이름 바꾸기`} title="이름 바꾸기" onClick={() => startEdit({ kind: 'rename', from: c })}>
+                        <Icon name="pencil" size={14} />
+                      </button>
+                      <button className="cat-opt-icon danger" aria-label={`"${c}" 삭제`} title="삭제 — 대기 항목이 없는 카테고리만 지울 수 있습니다" onClick={() => bn.deleteCategory(c)}>
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+          <div className="cat-menu-foot">
+            {edit?.kind === 'add' ? (
+              editor('새 카테고리 이름', '만들기')
+            ) : (
+              <button className="cat-add" onClick={() => startEdit({ kind: 'add' })}>
+                <Icon name="plus" size={14} />새 카테고리
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -370,7 +442,13 @@ function CategorySection(props: { bn: PinProof; name: string; views: ItemView[];
           className={`btn cat-copy ${current ? 'primary' : ''}`}
           disabled={views.length === 0}
           onClick={() => bn.copyCategory(name)}
-          title={fresh > 0 ? '아직 넘기지 않은 항목만 담아 복사합니다' : '모두 넘긴 항목입니다. 대기 항목 전부를 다시 복사합니다'}
+          title={
+            views.length === 0
+              ? '담은 항목이 없어 복사할 것이 없습니다'
+              : fresh > 0
+                ? '아직 넘기지 않은 항목만 담아 복사합니다'
+                : '모두 넘긴 항목입니다. 대기 항목 전부를 다시 복사합니다'
+          }
         >
           {fresh > 0 || views.length === 0 ? `프롬프트 복사${fresh > 0 ? ` (새 ${fresh})` : ''}` : '프롬프트 다시 복사'}
         </button>
@@ -421,7 +499,13 @@ function PasteZone({ bn }: { bn: PinProof }) {
         bn.addPasted(e.dataTransfer);
       }}
     >
-      여기를 클릭하고 <kbd>⌘V</kbd> 로 스크린샷·텍스트 붙여넣기 · 이미지 끌어다 놓기
+      여기를 클릭하고
+      <br />
+      스크린샷·텍스트 <kbd>Cmd</kbd> + <kbd>V</kbd>
+      <br />
+      ·
+      <br />
+      이미지 드래그 앤 드롭
     </div>
   );
 }
