@@ -297,6 +297,32 @@ try {
   await app.mouse.up();
   await confirm();
   await panel.locator('.draft .ev').nth(2).waitFor();
+
+  // 모드 중 안내 띠의 모드 이름을 누르면 선택 메뉴가 툴바 위로 열리고, 고르면 모드가 바로 바뀐다
+  const modeName = app.locator('pinproof-overlay .guide .mode-name');
+  const menu = app.locator('pinproof-overlay .mode-menu');
+  const inMode = () => ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode'));
+  await modeName.click();
+  await menu.waitFor({ timeout: 3000 });
+  await app.waitForTimeout(250);
+  const mb = await menu.boundingBox();
+  const tbb = await app.locator('pinproof-overlay .tb').boundingBox();
+  check(mb.y + mb.height <= tbb.y, '모드 선택 메뉴는 툴바 위로 열림');
+  check((await menu.locator('[aria-checked="true"]').textContent()).includes('영역'), '메뉴에 지금 모드(영역) 체크');
+  await app.screenshot({ path: path.join(outDir, 'page-mode-menu.png') });
+  const evBefore = await panel.locator('.draft .ev').count();
+  await app.mouse.click(700, 300); // 바깥 클릭
+  await app.waitForTimeout(300);
+  check((await menu.isHidden()) && (await inMode()) && (await panel.locator('.draft .ev').count()) === evBefore, '바깥 클릭은 메뉴만 닫음(모드·증거 그대로)');
+  await modeName.click();
+  await menu.waitFor();
+  await app.keyboard.press('Escape');
+  await app.waitForTimeout(200);
+  check((await menu.isHidden()) && (await inMode()), 'Esc 는 메뉴만 닫음(모드는 그대로)');
+  await modeName.click();
+  await menu.locator('[data-pick="element"]').click();
+  await app.waitForTimeout(300);
+  check((await modeName.textContent()).includes('요소') && (await inMode()), '메뉴에서 요소를 고르면 모드가 바로 바뀜');
   await app.keyboard.press('Escape');
 
   // ---------- 페이지 이동 후 계속 수집 + 컨테이너 + 네트워크 ----------

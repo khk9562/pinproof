@@ -2,6 +2,14 @@ import { OverlayState, PickMode } from '@/lib/messages';
 import { ICON, PIN_LOGO } from './icons';
 
 const MODE_NAME: Record<PickMode, string> = { element: '요소', text: '텍스트', region: '영역' };
+/** 모드 중 안내 띠의 모드 이름을 누르면 여는 선택 메뉴 항목 */
+const MENU: { pick: PickMode | 'network'; name: string; key: string }[] = [
+  { pick: 'element', name: '요소', key: '⌥⇧E' },
+  { pick: 'text', name: '텍스트', key: '⌥⇧T' },
+  { pick: 'region', name: '영역', key: '⌥⇧R' },
+  { pick: 'network', name: '네트워크 담기', key: '⌥⇧N' },
+];
+const CHEVRON = '<svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 6.5L5 4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MODE_HINT: Record<PickMode, string> = {
   element: '클릭해서 담기<span class="dot3"></span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 이동',
   text: '글자를 드래그해서 담기',
@@ -38,6 +46,10 @@ export class Toolbar {
   private count: number | null = null;
   private hideTimer: number | undefined;
   private suppressClick = false;
+  private mode: PickMode | null = null;
+  private menu: HTMLElement;
+  /** 메뉴가 열린 동안 페이지를 덮어, 바깥을 눌러도 요소가 담기지 않고 메뉴만 닫히게 한다 */
+  private shield: HTMLElement;
 
   constructor(root: ShadowRoot, private h: ToolbarHandlers) {
     this.el = document.createElement('div');
@@ -67,6 +79,19 @@ export class Toolbar {
     this.rec = this.el.querySelector('.rec')!;
     this.logo = this.el.querySelector('.logo')!;
     this.eye = this.el.querySelector('[data-act="markers"]')!;
+    this.menu = document.createElement('div');
+    this.menu.className = 'mode-menu';
+    this.menu.setAttribute('role', 'menu');
+    this.menu.hidden = true;
+    this.el.appendChild(this.menu);
+    this.shield = document.createElement('div');
+    this.shield.style.cssText = 'position:fixed;inset:0;pointer-events:auto;';
+    this.shield.hidden = true;
+    this.shield.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this.closeMenu();
+    });
+    root.appendChild(this.shield);
     root.appendChild(this.el);
 
     this.el.addEventListener('click', this.onClick, true);
@@ -106,9 +131,11 @@ export class Toolbar {
   }
 
   setMode(mode: PickMode | null) {
+    this.closeMenu();
+    this.mode = mode;
     if (mode) {
       this.guide.innerHTML =
-        `<span class="mode-name">${MODE_NAME[mode]}</span><span class="dot3"></span>` +
+        `<button class="mode-name" data-act="menu" aria-haspopup="menu" aria-expanded="false" title="다른 모드로 바꾸기">${MODE_NAME[mode]}${CHEVRON}</button><span class="dot3"></span>` +
         `<span class="hint">${MODE_HINT[mode]}</span><span class="dot3"></span>` +
         `<button class="hint stop tbtn" data-act="stop" title="모드 종료 (Esc)"><kbd>Esc</kbd> 종료</button>`;
     }
@@ -161,11 +188,55 @@ export class Toolbar {
     if (!btn) return;
     const mode = btn.getAttribute('data-mode') as PickMode | null;
     const act = btn.getAttribute('data-act');
+    const pick = btn.getAttribute('data-pick') as PickMode | 'network' | null;
+    if (pick) {
+      this.closeMenu();
+      if (pick === 'network') this.h.onNetwork();
+      else if (pick !== this.mode) this.h.onMode(pick); // 다른 모드로 바로 전환(지금 모드를 고르면 그대로)
+      return;
+    }
+    if (act === 'menu') {
+      if (this.menu.hidden) this.openMenu(btn);
+      else this.closeMenu();
+      return;
+    }
     if (mode) this.h.onMode(mode);
     else if (act === 'network') this.h.onNetwork();
     else if (act === 'markers') this.h.onToggleMarkers();
     else if (act === 'stop') this.h.onStop();
   };
+
+  // ---------- 모드 선택 메뉴 ----------
+  /** 툴바가 화면 아래쪽이면 위로, 위쪽으로 옮겨 두었으면 아래로 연다 */
+  private openMenu(anchor: HTMLElement) {
+    const cur = this.mode;
+    this.menu.innerHTML = MENU.map(
+      (m) =>
+        `<button class="mode-item" role="menuitemradio" data-pick="${m.pick}" aria-checked="${m.pick === cur}">` +
+        `${m.pick === 'network' ? ICON.network : ICON[m.pick]}<span>${m.name}</span><span class="sp"></span><kbd>${m.key}</kbd></button>`,
+    ).join('');
+    const tb = this.el.getBoundingClientRect();
+    const a = anchor.getBoundingClientRect();
+    this.menu.classList.toggle('down', tb.top < 220);
+    this.menu.style.left = `${Math.max(0, a.left - tb.left - 4)}px`;
+    this.menu.hidden = false;
+    this.shield.hidden = false;
+    anchor.setAttribute('aria-expanded', 'true');
+    this.menu.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+  }
+
+  get menuOpen(): boolean {
+    return !this.menu.hidden;
+  }
+
+  /** 열려 있었으면 닫고 true. 모드 중 Esc 를 먼저 여기서 받는다 */
+  closeMenu(): boolean {
+    if (this.menu.hidden) return false;
+    this.menu.hidden = true;
+    this.shield.hidden = true;
+    this.guide.querySelector('[data-act="menu"]')?.setAttribute('aria-expanded', 'false');
+    return true;
+  }
 
   // ---------- 위치 ----------
   private place() {
@@ -183,7 +254,7 @@ export class Toolbar {
   }
 
   private onDragStart = (e: MouseEvent) => {
-    if (e.button !== 0 || (e.target as Element).closest('button')) return;
+    if (e.button !== 0 || (e.target as Element).closest('button, .mode-menu')) return;
     e.preventDefault();
     const r = this.el.getBoundingClientRect();
     const start = { x: e.clientX, y: e.clientY, right: innerWidth - r.right, top: r.top };

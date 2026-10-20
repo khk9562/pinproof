@@ -109,7 +109,28 @@ kbd {
 .tb.mode .swap { transition: width .3s var(--ease) .15s; }
 .tb.mode .swap .tools { opacity: 0; pointer-events: none; transition: opacity .15s ease; }
 .tb.mode .swap .guide { opacity: 1; pointer-events: auto; transition: opacity .2s ease .45s; }
-.guide .mode-name { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; font-weight: 600; color: var(--text); }
+.guide .mode-name {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 6px; border: 0; border-radius: var(--pill);
+  background: transparent; font-weight: 600; color: var(--text); transition: background var(--t);
+}
+.guide .mode-name:hover, .guide .mode-name[aria-expanded="true"] { background: var(--surface-2); }
+.guide .mode-name .chev { color: var(--text-3); transition: transform var(--t); }
+.guide .mode-name[aria-expanded="true"] .chev { transform: rotate(180deg); }
+/* 모드 선택 메뉴: 툴바 위(또는 아래)로 뜨는 작은 목록 */
+.mode-menu {
+  position: absolute; bottom: calc(100% + 8px); min-width: 196px; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  border-radius: var(--radius-l); background: var(--bg); box-shadow: var(--shadow-float); animation: pp-menu-up .15s var(--ease) both;
+}
+.mode-menu.down { bottom: auto; top: calc(100% + 8px); animation-name: pp-menu-down; }
+@keyframes pp-menu-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes pp-menu-down { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.mode-item {
+  display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 0; border-radius: var(--radius);
+  background: transparent; color: var(--text-2); font-size: 13px; text-align: left; white-space: nowrap; transition: background var(--t), color var(--t);
+}
+.mode-item:hover, .mode-item:focus-visible { background: var(--surface-2); color: var(--text); outline: none; }
+.mode-item[aria-checked="true"] { color: var(--navy); font-weight: 600; }
+.mode-item .sp { flex: 1; }
 .guide .mode-name::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 0 1px var(--navy); }
 .guide .hint { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); padding: 0 6px; white-space: nowrap; }
 .guide .stop { margin-left: 2px; }

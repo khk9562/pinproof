@@ -446,6 +446,14 @@ class Picker {
 
   private onKey = (e: KeyboardEvent) => {
     if (this.isTyping(e) || this.popover.isOpen) return;
+    // 모드 선택 메뉴가 열려 있으면 Esc 는 메뉴만 닫는다(모드는 그대로)
+    if (e.key === 'Escape' && this.toolbar.closeMenu()) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    // 메뉴가 열린 동안 화살표·Enter 는 메뉴 항목에 쓰이게 둔다(페이지 요소를 옮기거나 담지 않음)
+    if (this.toolbar.menuOpen) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
