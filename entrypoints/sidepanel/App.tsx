@@ -219,13 +219,36 @@ function NoDraft({ bn }: { bn: PinProof }) {
   );
 }
 
+/**
+ * 증거 줄은 한 구역에서 하나만 펼친다. 방금 담은 증거는 새로 들어올 때 한 번 펼친다
+ * (사용자가 접은 뒤 다른 변화로 다시 열리지 않게 이미 처리한 freshUid 는 기억한다)
+ */
+function useOneOpen(freshUid: string | null, uids: string[]): [string | null, (uid: string) => void] {
+  const [openUid, setOpenUid] = useState<string | null>(null);
+  const handled = useRef<string | null>(null);
+  const hasFresh = !!freshUid && uids.includes(freshUid);
+  useEffect(() => {
+    if (hasFresh && freshUid !== handled.current) {
+      handled.current = freshUid;
+      setOpenUid(freshUid);
+    }
+  }, [hasFresh, freshUid]);
+  return [openUid, (uid) => setOpenUid((cur) => (cur === uid ? null : uid))];
+}
+
 function DraftCard({ bn }: { bn: PinProof }) {
   const d = bn.draft!;
+  const [openUid, toggle] = useOneOpen(bn.freshUid, d.evidence.map((e) => e.uid));
   return (
     <section className="draft">
       <div className="draft-head">
         <span className="badge-draft">작성 중</span>
         <span className="mono strong">#{padId(d.id)}</span>
+        <button className="draft-fold" onClick={bn.finishDraft} title="이슈 접기 — 저장하고 목록으로" aria-label="이슈 접기">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 10l4-4 4 4" />
+          </svg>
+        </button>
       </div>
       <label className="field">
         <span>제목</span>
@@ -253,15 +276,21 @@ function DraftCard({ bn }: { bn: PinProof }) {
       <label className="field">
         <span>메모</span>
         <textarea
-          rows={4}
+          className="memo-area"
+          rows={2}
           value={d.memo}
-          placeholder={'현상: 무엇이 보였나\n기대: 어떻게 되어야 하나 (요구사항·기준 문서가 있으면 함께)\n제약: 예) 로컬에서만, 다른 화면은 건드리지 말 것'}
+          placeholder="현상 · 기대(기준 문서) · 제약(예: 로컬에서만)"
           onChange={(e) => bn.updateDraft({ memo: e.target.value })}
         />
       </label>
 
-      <PasteZone bn={bn} />
-      <div className="ev-list">
+      {/* 본문(위)과 이 이슈에 담은 증거(아래)를 상자로 나눈다. 붙여넣기 칸은 증거를 담는 입구라 상자 안에 */}
+      <div className="ev-block">
+        <div className="ev-block-head">
+          증거 <span className="count">{d.evidence.length}</span>
+        </div>
+        <PasteZone bn={bn} />
+        <div className="ev-list">
         {d.evidence.length === 0 && (
           <p className="muted small">페이지 아래 가운데 툴바의 요소·텍스트·영역·네트워크로 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>
         )}
@@ -270,6 +299,8 @@ function DraftCard({ bn }: { bn: PinProof }) {
             key={e.uid}
             ev={e}
             fresh={bn.freshUid === e.uid}
+            open={openUid === e.uid}
+            onToggle={() => toggle(e.uid)}
             onNote={(note) => bn.updateEvidence(e.uid, { note })}
             onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}
@@ -278,17 +309,18 @@ function DraftCard({ bn }: { bn: PinProof }) {
             onDelete={() => bn.removeEvidence(e.uid)}
           />
         ))}
+        </div>
       </div>
 
       <div className="draft-actions">
-        <button className="btn" onClick={bn.finishDraft}>
-          작성 종료
+        <button className="btn" onClick={bn.finishDraft} title="저장하고 목록으로">
+          이슈 접기
         </button>
         <button className="btn ghost danger-text" onClick={() => bn.removeRecord(d.id, d.title, false)} title="이 기록을 파일째 삭제">
-          기록 삭제
+          삭제
         </button>
         <button className="btn primary" onClick={bn.copyDraft} title="Claude Code 등에 붙여넣을 프롬프트 복사">
-          복사
+          프롬프트 복사
         </button>
       </div>
     </section>
@@ -455,6 +487,9 @@ function Letter({ ev }: { ev: Evidence }) {
 function EvidenceRow(props: {
   ev: Evidence;
   fresh: boolean;
+  /** 이 구역에서 펼친 줄인지(한 번에 하나) */
+  open: boolean;
+  onToggle: () => void;
   onNote: (note: string) => void;
   onLocate: () => void;
   onGo: () => void;
@@ -465,10 +500,7 @@ function EvidenceRow(props: {
 }) {
   const { ev } = props;
   /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
-  /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const open = userOpen ?? props.fresh;
-  const setOpen = setUserOpen;
+  const open = props.open;
   const [shot, setShot] = useState(false);
   /** 고른 옮길 곳. 목록이 바뀌어 없어졌으면 첫 항목(기본값)으로 */
   const [picked, setMoveTo] = useState<string | null>(null);
@@ -486,7 +518,7 @@ function EvidenceRow(props: {
           aria-expanded={open}
           onClick={() => {
             if (!open) props.onLocate();
-            setOpen(!open);
+            props.onToggle();
           }}
           title={open ? '접기' : '펼치기 · 이 페이지에 있으면 마커를 반짝입니다'}
         >
@@ -519,7 +551,17 @@ function EvidenceRow(props: {
           {ev.screenshot && ev.kind !== 'paste' && (
             <img className={shot ? 'shot' : 'thumb'} src={ev.screenshot} alt="스크린샷" onClick={() => setShot(!shot)} title={shot ? '작게 보기' : '스크린샷 크게 보기'} />
           )}
-          <input className="ev-note" value={ev.note} placeholder="한 줄 메모 (선택)" onChange={(e) => props.onNote(e.target.value)} />
+          <textarea
+            className="ev-note"
+            rows={2}
+            value={ev.note}
+            placeholder="메모 (선택)"
+            onKeyDown={(e) => {
+              // 기록 md 에 한 줄로 들어가는 메모라 Enter 로 줄을 나누지 않는다(긴 글은 칸 안에서 자동 줄바꿈)
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault();
+            }}
+            onChange={(e) => props.onNote(e.target.value.replace(/\s*\n\s*/g, ' '))}
+          />
           <div className="ev-actions">
             {ev.selector && (
               <button className="go-page" onClick={props.onGo} title="이 증거를 담은 화면으로 가서 그 요소를 찾아 반짝입니다">
@@ -552,6 +594,7 @@ function EvidenceRow(props: {
 
 function InboxSection({ bn }: { bn: PinProof }) {
   const [open, setOpen] = useState(true);
+  const [openUid, toggle] = useOneOpen(bn.freshUid, bn.inbox.map((e) => e.uid));
   if (bn.inbox.length === 0) return null;
   return (
     <section className="section inbox">
@@ -564,6 +607,8 @@ function InboxSection({ bn }: { bn: PinProof }) {
             key={e.uid}
             ev={e}
             fresh={bn.freshUid === e.uid}
+            open={openUid === e.uid}
+            onToggle={() => toggle(e.uid)}
             onNote={(note) => bn.setInboxNote(e.uid, note)}
             onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}

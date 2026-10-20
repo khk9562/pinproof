@@ -144,10 +144,19 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 /* 작성 중 기록 */
 /* 구역: 작성 중 기록(남색 테두리 = 지금 편집 중) · 미분류(점선 = 임시 보관) · 기록 목록(실선) */
 .draft {
-  display: flex; flex-direction: column; gap: 8px; padding: 12px;
-  border: 1.5px solid var(--navy); border-radius: var(--radius-l); box-shadow: 0 0 0 3px var(--navy-soft);
+  display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; overflow: hidden;
+  border: 1.5px solid var(--navy); border-radius: var(--radius-l); box-shadow: 0 0 0 3px var(--navy-soft); background: var(--surface);
 }
-.draft-head { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
+/* 이슈 머리: 옅은 남색 띠 + 오른쪽 접기(▴) — 펼쳐진 이슈라는 것과 접을 수 있다는 것을 보여 준다 */
+.draft-head {
+  display: flex; align-items: center; gap: 8px; margin: 0 -12px 4px; padding: 8px 8px 8px 12px;
+  background: var(--navy-soft); border-bottom: 1px solid var(--border);
+}
+.draft-fold {
+  display: grid; place-items: center; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 0; border-radius: var(--radius-s);
+  background: transparent; color: var(--text-2); cursor: pointer; transition: background var(--t), color var(--t);
+}
+.draft-fold:hover { background: var(--bg); color: var(--navy); }
 .badge-draft { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--sky-soft); color: var(--on-sky-soft); font-size: 12px; font-weight: 500; }
 .field { display: grid; grid-template-columns: 40px 1fr; align-items: start; gap: 8px; }
 .field > span { color: var(--text-3); font-size: 12px; padding-top: 6px; }
@@ -155,6 +164,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
   width: 100%; padding: 5px 9px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--bg); resize: vertical;
   transition: border-color var(--t), box-shadow var(--t);
 }
+/* 메모 칸: 최소 두 줄, 내용에 맞춰 늘어남 */
+.memo-area, .ev-note { field-sizing: content; min-height: calc(2lh + 12px); max-height: 12em; resize: none; line-height: 1.45; }
 .field input:hover, .field textarea:hover, .ev-note:hover { border-color: var(--text-3); }
 .field input:focus, .field textarea:focus, .ev-note:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px var(--navy-soft); }
 .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--surface-2); justify-self: start; }
@@ -172,6 +183,14 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 /* 증거 한 줄 목록 */
 .ev-list { display: flex; flex-direction: column; margin: 2px -6px 0; }
 .ev-list > p { margin: 0 6px; }
+/* 이슈 본문(옅은 바탕) 아래, 이 이슈에 담은 증거를 흰 상자로 따로 묶는다 */
+.ev-block {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);
+}
+.ev-block-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+/* 이슈에 딸린 증거: 왼쪽 세로 점선으로 이어 보이게 */
+.draft .ev-list { margin: 0 0 0 6px; padding-left: 8px; border-left: 1.5px dashed var(--text-3); }
 .ev { border-radius: var(--radius-s); }
 /* 증거 줄 사이 구분선 */
 .ev + .ev { border-top: 1px solid var(--surface-2); }

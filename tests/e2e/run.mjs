@@ -200,7 +200,7 @@ try {
   // ---------- 새 기록 + 요소 ----------
   await panel.getByRole('button', { name: '+ 새 기록' }).click();
   await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('대시보드 총합 불일치');
-  await panel.getByPlaceholder(/현상: 무엇이/).fill('총합은 10인데 노드 목록 CPU를 더하면 100이 넘음');
+  await panel.getByPlaceholder(/현상 · 기대/).fill('총합은 10인데 노드 목록 CPU를 더하면 100이 넘음');
   await panel.getByPlaceholder('예: #589').fill('#589');
   await app.waitForTimeout(300);
   check((await app.locator('pinproof-overlay .tb .rec').textContent()).includes('#001'), '툴바 기록 칩에 작성 중 기록 번호');
@@ -412,18 +412,24 @@ try {
     await w.write(`${text}\n## 처리 기록\n- 원인: 테스트로 덧붙인 처리 기록\n`);
     await w.close();
   }, mdName);
-  await panel.getByPlaceholder(/현상: 무엇이/).fill('메모 수정됨');
+  await panel.getByPlaceholder(/현상 · 기대/).fill('메모 수정됨');
   await panel.waitForTimeout(1200);
   const md2 = await readOpfs(`.pinproof/${mdName}`);
   check(md2.includes('메모 수정됨') && md2.includes('- 원인: 테스트로 덧붙인 처리 기록'), '익스텐션이 다시 써도 처리 기록 보존');
 
+  // 증거 줄은 한 번에 하나만 펼친다: 방금 담은 G 가 열려 있고, A 를 열면 G 는 닫힌다
+  check((await panel.locator('.draft .ev.open').count()) === 1, '증거 줄은 하나만 펼쳐짐(방금 담은 것)');
+  await panel.locator('.draft .ev').first().locator('.ev-head').click();
+  await panel.waitForTimeout(200);
+  const openLetters = await panel.locator('.draft .ev.open .letter').allTextContents();
+  check(openLetters.join(',') === 'A', `다른 줄을 열면 열려 있던 줄은 닫힘: ${openLetters.join(',')}`);
   await panel.setViewportSize({ width: 400, height: 1400 });
   await panel.screenshot({ path: path.join(outDir, 'panel-draft.png'), fullPage: true });
   const saveFails = (await panel.evaluate(() => window.__notices)).filter((t) => t.includes('저장 실패'));
   check(saveFails.length === 0, `연달아 담아도 "파일 저장 실패" 경고 없음${saveFails.length ? `: ${saveFails[0]}` : ''}`);
 
   // ---------- 작성 종료 → 목록 → 보관 ----------
-  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
   await panel.locator('.rec').first().waitFor();
   await panel.waitForTimeout(5500); // 목록 주기 갱신으로 처리 기록 표시 반영
   check(await panel.getByText('처리 기록 있음').isVisible(), '목록에 처리 기록 있음 표시');
@@ -460,7 +466,7 @@ try {
   check(letters.join(',') === 'A' && (await panel.locator('.draft .ev .target-sel').first().textContent()).startsWith('#node-table'), `증거 삭제 후 문자 다시 매기기: ${letters.join(',')}`);
   await panel.waitForTimeout(1000);
   const before = await readOpfs('.pinproof/');
-  await panel.getByRole('button', { name: '기록 삭제' }).click();
+  await panel.locator('.draft-actions').getByRole('button', { name: '삭제' }).click();
   await panel.waitForTimeout(500);
   const after = await readOpfs('.pinproof/');
   check(/지울-기록\.md/.test(before) && !/지울-기록\.md/.test(after), '작성 중인 기록 삭제');
@@ -473,7 +479,7 @@ try {
   const emptyId = (await panel.locator('.draft-head .mono').textContent()).replace('#', '');
   const hasEmptyMd = async () => (await readOpfs('.pinproof/')).split(',').some((n) => n.startsWith(`${emptyId}-`));
   check(await hasEmptyMd(), `새 기록을 만들면 md 가 생김(#${emptyId})`);
-  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.locator('.draft-head .draft-fold').click(); // 머리의 접기(▴)도 이슈 접기와 같다
   await panel.waitForTimeout(700);
   check(!(await hasEmptyMd()) && (await panel.locator('.records .rec-title', { hasText: '(제목 없음)' }).count()) === 0, '아무것도 쓰지 않고 작성 종료하면 기록이 사라짐');
 
@@ -486,7 +492,7 @@ try {
   await panel.locator('.draft .ev').nth(0).waitFor();
   await app.keyboard.press('Escape');
   const targetId = Number((await panel.locator('.draft-head .mono').textContent()).replace('#', ''));
-  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
   await panel.getByRole('button', { name: '+ 새 기록' }).click();
   await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('옮기기 원본');
   await tool('요소').click();
@@ -507,7 +513,7 @@ try {
   check((await panel.locator('.draft .ev').count()) === 0, '옮기면 원래 기록에서 빠짐');
   check(/### B\. .+ — \/nodes/.test(targetMd) && targetMd.includes('evidence: 2'), `대상 기록(#${targetId}) 끝에 B 로 붙음`);
   // 뒤 검사에 영향이 없게 두 기록을 지운다
-  await panel.getByRole('button', { name: '기록 삭제' }).click();
+  await panel.locator('.draft-actions').getByRole('button', { name: '삭제' }).click();
   await panel.waitForTimeout(500);
   await panel.locator('.records > .rec', { hasText: '옮길 대상' }).getByRole('button', { name: '삭제' }).click();
   await panel.waitForTimeout(500);
@@ -580,7 +586,7 @@ try {
   const deployMdName = (await readOpfs('.pinproof/')).split(',').find((n) => n.startsWith(`${deployId}-`));
   const deployMd = deployMdName ? await readOpfs(`.pinproof/${deployMdName}`) : '';
   check(deployMd.includes(`app: ${DEPLOY}`) && deployMd.includes('env: deployed'), `배포 주소에서 담은 기록에 env: deployed (${deployMdName})`);
-  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
   await panel.waitForTimeout(600);
   check(await panel.locator('.records .rec-title', { hasText: '배포 환경 확인' }).first().isVisible(), '배포 주소 탭의 목록에는 그 주소에서 만든 기록이 보임');
 
