@@ -1,8 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
-import { Evidence, KIND_LABEL, RECORD_TYPES, RecordSummary } from '@/lib/types';
-import { PinProof, usePinProof } from './usePinProof';
+import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
+import { ItemView, PinProof, usePinProof } from './usePinProof';
 
 /** 테마 설정(시스템·라이트·다크). 페이지 위 오버레이도 같은 값을 따른다 */
 function useThemePref(): [ThemePref, () => void] {
@@ -54,9 +54,19 @@ export function App() {
       <ConnectionBar bn={bn} theme={theme} />
       {bn.connection === 'granted' && (
         <>
-          {bn.draft ? <DraftCard bn={bn} /> : <NoDraft bn={bn} />}
-          <InboxSection bn={bn} />
-          <RecordList bn={bn} />
+          <CategoryBar bn={bn} />
+          <CategoryList bn={bn} />
+          <Folded title="보관함" count={bn.archivedItems.length} className="archive">
+            <p className="muted small">
+              처리 완료된 항목이 여기로 옮겨집니다. 되돌리면 다시 대기 항목이 되고, 삭제하기 전까지 <code>.pinproof/items/archive/</code>에 남습니다.
+            </p>
+            <ItemGroup bn={bn} views={bn.archivedItems} mode="archived" />
+          </Folded>
+          <Folded title="다른 주소 항목" count={bn.otherItems.length} className="others-items">
+            <p className="muted small">같은 폴더에 연결한 다른 주소에서 만든 대기 항목입니다. 그 주소 탭에서 열면 고칠 수 있습니다.</p>
+            <ItemGroup bn={bn} views={bn.otherItems} mode="other" />
+          </Folded>
+          <OldRecords bn={bn} />
         </>
       )}
       {bn.notice && <div className={`notice ${bn.notice.kind}`}>{bn.notice.text}</div>}
@@ -208,121 +218,158 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
   );
 }
 
-function NoDraft({ bn }: { bn: PinProof }) {
+/** 지금 담을 카테고리: 고르기 · 새로 만들기 · 이름 바꾸기 · 삭제(미분류는 바꾸거나 지울 수 없음) */
+function CategoryBar({ bn }: { bn: PinProof }) {
+  const [mode, setMode] = useState<null | 'add' | 'rename'>(null);
+  const [name, setName] = useState('');
+  const names = bn.categories.includes(bn.category) ? bn.categories : [...bn.categories, bn.category];
+  const start = (m: 'add' | 'rename') => {
+    setMode(m);
+    setName(m === 'rename' ? bn.category : '');
+  };
+  const submit = async () => {
+    if (mode === 'add') await bn.addCategory(name);
+    else if (mode === 'rename') await bn.renameCategory(bn.category, name);
+    setMode(null);
+  };
+  if (mode) {
+    return (
+      <form
+        className="cat-bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <input
+          className="cat-input"
+          autoFocus
+          value={name}
+          placeholder={mode === 'add' ? '예: 데이터 정합성' : ''}
+          aria-label={mode === 'add' ? '새 카테고리 이름' : '바꿀 이름'}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setMode(null)}
+        />
+        <button className="btn primary" type="submit" disabled={!name.trim()}>
+          {mode === 'add' ? '만들기' : '바꾸기'}
+        </button>
+        <button className="btn ghost" type="button" onClick={() => setMode(null)}>
+          취소
+        </button>
+      </form>
+    );
+  }
   return (
-    <section className="nodraft">
-      <p className="muted">작성 중인 기록이 없습니다. 지금 담는 증거는 미분류로 갑니다.</p>
-      <button className="btn primary block" onClick={bn.newRecord}>
-        + 새 기록
+    <div className="cat-bar">
+      <label className="cat-pick">
+        <span>담을 곳</span>
+        <select value={bn.category} onChange={(e) => bn.setCategory(e.target.value)}>
+          {names.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="link" onClick={() => start('add')}>
+        + 새 카테고리
       </button>
-    </section>
+      {bn.category !== DEFAULT_CATEGORY && (
+        <span className="cat-tools">
+          <button className="link" onClick={() => start('rename')}>
+            이름 바꾸기
+          </button>
+          <button className="link danger" onClick={() => bn.deleteCategory(bn.category)} title="대기 항목이 없는 카테고리만 지울 수 있습니다">
+            삭제
+          </button>
+        </span>
+      )}
+    </div>
   );
 }
 
 /**
- * 증거 줄은 한 구역에서 하나만 펼친다. 방금 담은 증거는 새로 들어올 때 한 번 펼친다
- * (사용자가 접은 뒤 다른 변화로 다시 열리지 않게 이미 처리한 freshUid 는 기억한다)
+ * 펼친 줄은 목록 전체에서 하나만. 방금 담은 항목은 새로 들어올 때 한 번 펼친다
+ * (사용자가 접은 뒤 다른 변화로 다시 열리지 않게 이미 처리한 항목은 기억한다)
  */
-function useOneOpen(freshUid: string | null, uids: string[]): [string | null, (uid: string) => void] {
-  const [openUid, setOpenUid] = useState<string | null>(null);
-  const handled = useRef<string | null>(null);
-  const hasFresh = !!freshUid && uids.includes(freshUid);
+function useOneOpen(fresh: number | null, ids: number[]): [number | null, (id: number) => void] {
+  const [openId, setOpenId] = useState<number | null>(null);
+  const handled = useRef<number | null>(null);
+  const hasFresh = fresh !== null && ids.includes(fresh);
   useEffect(() => {
-    if (hasFresh && freshUid !== handled.current) {
-      handled.current = freshUid;
-      setOpenUid(freshUid);
+    if (hasFresh && fresh !== handled.current) {
+      handled.current = fresh;
+      setOpenId(fresh);
     }
-  }, [hasFresh, freshUid]);
-  return [openUid, (uid) => setOpenUid((cur) => (cur === uid ? null : uid))];
+  }, [hasFresh, fresh]);
+  return [openId, (id) => setOpenId((cur) => (cur === id ? null : id))];
 }
 
-function DraftCard({ bn }: { bn: PinProof }) {
-  const d = bn.draft!;
-  const [openUid, toggle] = useOneOpen(bn.freshUid, d.evidence.map((e) => e.uid));
+/** 이 주소의 대기 항목을 카테고리별로. 담는 중인 카테고리가 맨 위, 나머지는 항목이 있는 것만 */
+function CategoryList({ bn }: { bn: PinProof }) {
+  const byCat = new Map<string, ItemView[]>();
+  for (const v of [...bn.items].sort((a, b) => a.summary.id - b.summary.id)) {
+    const list = byCat.get(v.summary.category) ?? [];
+    list.push(v);
+    byCat.set(v.summary.category, list);
+  }
+  // 목록에 없는 카테고리(지운 뒤 되돌린 항목 등)도 항목이 있으면 보인다
+  const names = [...new Set([bn.category, ...bn.categories, ...byCat.keys()])].filter((n) => n === bn.category || byCat.has(n));
+  const freshId = bn.items.find((v) => v.item && v.item.evidence.uid === bn.freshUid)?.summary.id ?? null;
+  const [openId, toggle] = useOneOpen(
+    freshId,
+    bn.items.map((v) => v.summary.id),
+  );
   return (
-    <section className="draft">
-      <div className="draft-head">
-        <span className="badge-draft">작성 중</span>
-        <span className="mono strong">#{padId(d.id)}</span>
-        <button className="draft-fold" onClick={bn.finishDraft} title="이슈 접기 — 저장하고 목록으로" aria-label="이슈 접기">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 10l4-4 4 4" />
-          </svg>
+    <>
+      {names.map((n) => (
+        <CategorySection key={n} bn={bn} name={n} views={byCat.get(n) ?? []} openId={openId} toggle={toggle} />
+      ))}
+    </>
+  );
+}
+
+function CategorySection(props: { bn: PinProof; name: string; views: ItemView[]; openId: number | null; toggle: (id: number) => void }) {
+  const { bn, name, views } = props;
+  const current = name === bn.category;
+  const fresh = views.filter((v) => !v.summary.sent).length;
+  return (
+    <section className={`cat ${current ? 'current' : ''}`}>
+      <div className="cat-head">
+        {current && <span className="badge-draft">담는 중</span>}
+        <span className="cat-name">{name}</span>
+        <span className="count">{views.length}</span>
+        {!current && (
+          <button className="link" onClick={() => bn.setCategory(name)} title="페이지에서 담는 항목이 이 카테고리로 갑니다">
+            여기에 담기
+          </button>
+        )}
+        <button
+          className={`btn cat-copy ${current ? 'primary' : ''}`}
+          disabled={views.length === 0}
+          onClick={() => bn.copyCategory(name)}
+          title={fresh > 0 ? '아직 넘기지 않은 항목만 담아 복사합니다' : '모두 넘긴 항목입니다. 대기 항목 전부를 다시 복사합니다'}
+        >
+          {fresh > 0 || views.length === 0 ? `프롬프트 복사${fresh > 0 ? ` (새 ${fresh})` : ''}` : '프롬프트 다시 복사'}
         </button>
       </div>
-      <label className="field">
-        <span>제목</span>
-        <input
-          value={d.title}
-          placeholder="예: 대시보드 총합 불일치"
-          onChange={(e) => bn.updateDraft({ title: e.target.value })}
-          autoFocus={!d.title}
-        />
-      </label>
-      <div className="field">
-        <span>유형</span>
-        <div className="seg">
-          {RECORD_TYPES.map((t) => (
-            <button key={t} className={d.type === t ? 'on' : ''} onClick={() => bn.updateDraft({ type: t })}>
-              {t}
-            </button>
+      {current && <PasteZone bn={bn} />}
+      {views.length === 0 ? (
+        current && <p className="muted small">페이지 아래 가운데 툴바의 요소·텍스트·영역·네트워크로 담으세요. 담을 때마다 번호가 붙은 항목으로 이 카테고리에 쌓입니다.</p>
+      ) : (
+        <div className="ev-list">
+          {views.map((v) => (
+            <ItemRow
+              key={v.summary.id}
+              bn={bn}
+              view={v}
+              mode="mine"
+              open={props.openId === v.summary.id}
+              onToggle={() => props.toggle(v.summary.id)}
+            />
           ))}
         </div>
-      </div>
-      <label className="field">
-        <span>연관</span>
-        <input value={d.related} placeholder="예: #589" onChange={(e) => bn.updateDraft({ related: e.target.value })} />
-      </label>
-      <label className="field">
-        <span>메모</span>
-        <textarea
-          className="memo-area"
-          rows={2}
-          value={d.memo}
-          placeholder="현상 · 기대(기준 문서) · 제약(예: 로컬에서만)"
-          onChange={(e) => bn.updateDraft({ memo: e.target.value })}
-        />
-      </label>
-
-      {/* 본문(위)과 이 이슈에 담은 증거(아래)를 상자로 나눈다. 붙여넣기 칸은 증거를 담는 입구라 상자 안에 */}
-      <div className="ev-block">
-        <div className="ev-block-head">
-          증거 <span className="count">{d.evidence.length}</span>
-        </div>
-        <PasteZone bn={bn} />
-        <div className="ev-list">
-        {d.evidence.length === 0 && (
-          <p className="muted small">페이지 아래 가운데 툴바의 요소·텍스트·영역·네트워크로 담으세요. 페이지를 옮겨도 이 기록에 계속 쌓입니다.</p>
-        )}
-        {d.evidence.map((e) => (
-          <EvidenceRow
-            key={e.uid}
-            ev={e}
-            fresh={bn.freshUid === e.uid}
-            open={openUid === e.uid}
-            onToggle={() => toggle(e.uid)}
-            onNote={(note) => bn.updateEvidence(e.uid, { note })}
-            onLocate={() => bn.locate(e)}
-            onGo={() => bn.goTo(e)}
-            moves={[{ value: 'inbox', label: '미분류' }, ...recordMoves(bn)]}
-            onMoveTo={(to) => moveEvidence(bn, e.uid, to)}
-            onDelete={() => bn.removeEvidence(e.uid)}
-          />
-        ))}
-        </div>
-      </div>
-
-      <div className="draft-actions">
-        <button className="btn" onClick={bn.finishDraft} title="저장하고 목록으로">
-          이슈 접기
-        </button>
-        <button className="btn ghost danger-text" onClick={() => bn.removeRecord(d.id, d.title, false)} title="이 기록을 파일째 삭제">
-          삭제
-        </button>
-        <button className="btn primary" onClick={bn.copyDraft} title="Claude Code 등에 붙여넣을 프롬프트 복사">
-          프롬프트 복사
-        </button>
-      </div>
+      )}
     </section>
   );
 }
@@ -355,22 +402,6 @@ function PasteZone({ bn }: { bn: PinProof }) {
       여기를 클릭하고 <kbd>⌘V</kbd> 로 스크린샷·텍스트 붙여넣기 · 이미지 끌어다 놓기
     </div>
   );
-}
-
-type MoveOption = { value: string; label: string };
-
-/** 증거를 옮길 수 있는 기록: 지금 주소에서 만든(또는 주소 없는 옛) 보관 안 한 기록 중 작성 중인 것 말고 */
-function recordMoves(bn: PinProof): MoveOption[] {
-  return bn.records
-    .filter((r) => !r.archived && (!r.app || r.app === bn.origin) && r.id !== bn.draft?.id)
-    .map((r) => ({ value: String(r.id), label: `#${padId(r.id)} ${r.title || '(제목 없음)'}` }));
-}
-
-/** 옮길 곳: inbox(미분류) · draft(작성 중 기록) · 기록 번호 */
-function moveEvidence(bn: PinProof, uid: string, to: string) {
-  if (to === 'inbox') bn.evidenceToInbox(uid);
-  else if (to === 'draft') bn.inboxToDraft(uid);
-  else bn.moveToRecord(uid, Number(to));
 }
 
 function evidenceSummary(e: Evidence): string {
@@ -473,114 +504,166 @@ function rowWhat(e: Evidence): { text: string; bad?: number } {
   return { text: e.text ? `${name} "${e.text.replace(/\s+/g, ' ').slice(0, 40)}"` : name };
 }
 
-/** 문자 원: 페이지에 마커가 있는 증거는 하늘색으로 채우고, 마커가 없는 증거(네트워크·붙여넣기)는 테두리만 */
-function Letter({ ev }: { ev: Evidence }) {
-  if (!ev.letter) return <span className="dot-loose" title="미분류" />;
-  const onPage = ev.kind !== 'network' && ev.kind !== 'paste';
+/** 번호 배지: 페이지에 마커가 있는 항목은 하늘색으로 채우고, 마커가 없는 항목(네트워크·붙여넣기)은 테두리만 */
+function Num({ id, kind }: { id: number; kind?: EvidenceKind }) {
+  const onPage = kind !== 'network' && kind !== 'paste';
   return (
-    <span className={`letter ${onPage ? '' : 'outline'}`} title={onPage ? '페이지에 마커가 있는 증거' : '페이지 마커 없음'}>
-      {ev.letter}
+    <span className={`num ${onPage ? '' : 'outline'}`} title={`#${padId(id)} · ${onPage ? '페이지에 마커가 있는 항목' : '페이지 마커 없음'}`}>
+      {id}
     </span>
   );
 }
 
-function EvidenceRow(props: {
-  ev: Evidence;
-  fresh: boolean;
-  /** 이 구역에서 펼친 줄인지(한 번에 하나) */
-  open: boolean;
-  onToggle: () => void;
-  onNote: (note: string) => void;
-  onLocate: () => void;
-  onGo: () => void;
-  /** 옮길 수 있는 곳(첫 항목이 기본값: 작성 중 기록의 증거는 미분류, 미분류 증거는 작성 중 기록) */
-  moves: MoveOption[];
-  onMoveTo: (to: string) => void;
-  onDelete: () => void;
-}) {
-  const { ev } = props;
-  /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
-  const open = props.open;
+/** 편집용 원본이 없을 때(다른 주소·다른 브라우저에서 만든 항목) 파일 요약으로 보여줄 "무엇을 담았나" */
+function summaryWhat(s: ItemSummary): string {
+  const label = s.kind ? KIND_LABEL[s.kind] : '항목';
+  return s.page ? `${label} ${s.page}` : label;
+}
+
+function hostOf(app?: string): string {
+  return app ? app.replace(/^https?:\/\//, '') : '';
+}
+
+/**
+ * 항목 한 줄. 머리는 파일 요약으로 늘 그리고, 펼친 내용은 이 브라우저에 편집용 원본이 있을 때만 자세히.
+ * mine: 이 주소의 대기 항목(메모·옮기기·복사·삭제) / other: 다른 주소의 대기 항목(읽기 전용) / archived: 보관함(되돌리기·삭제)
+ */
+function ItemRow(props: { bn: PinProof; view: ItemView; mode: 'mine' | 'other' | 'archived'; open: boolean; onToggle: () => void }) {
+  const { bn, mode, open } = props;
+  const { summary: s, item } = props.view;
+  const ev = item?.evidence ?? null;
+  const fresh = !!ev && ev.uid === bn.freshUid;
   const [shot, setShot] = useState(false);
-  /** 고른 옮길 곳. 목록이 바뀌어 없어졌으면 첫 항목(기본값)으로 */
+  /** 옮길 카테고리. 목록이 바뀌어 없어졌으면 첫 항목으로 */
+  const moves = bn.categories.filter((c) => c !== s.category);
   const [picked, setMoveTo] = useState<string | null>(null);
-  const moveTo = picked && props.moves.some((m) => m.value === picked) ? picked : (props.moves[0]?.value ?? '');
+  const moveTo = picked && moves.includes(picked) ? picked : (moves[0] ?? '');
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (props.fresh) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [props.fresh]);
-  const what = rowWhat(ev);
+    if (fresh) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [fresh]);
+  const what = ev ? rowWhat(ev) : { text: summaryWhat(s) };
+  const note = ev ? ev.note : s.note;
+  const editable = mode === 'mine' && !!item;
   return (
-    <div ref={rowRef} className={`ev ${ev.kind} ${props.fresh ? 'fresh' : ''} ${open ? 'open' : ''}`}>
+    <div ref={rowRef} className={`ev item ${s.kind ?? ''} ${fresh ? 'fresh' : ''} ${open ? 'open' : ''}`}>
       <div className="ev-row">
         <button
           className="ev-head"
           aria-expanded={open}
           onClick={() => {
-            if (!open) props.onLocate();
+            if (!open && ev && mode === 'mine') bn.locate(ev);
             props.onToggle();
           }}
           title={open ? '접기' : '펼치기 · 이 페이지에 있으면 마커를 반짝입니다'}
         >
-          <Letter ev={ev} />
+          <Num id={s.id} kind={s.kind} />
           <span className="what mono" title={what.text}>
             {what.bad !== undefined && <span className="code-bad">{what.bad || 'ERR'}</span>}
             {what.text}
           </span>
-          <span className={`memo ${ev.note ? '' : 'none'}`}>{ev.note || '메모 없음'}</span>
+          <span className={`memo ${note ? '' : 'none'}`}>{note || '메모 없음'}</span>
+          {mode !== 'mine' ? (
+            <span className="tag">{s.category}</span>
+          ) : (
+            s.sent && (
+              <span className="tag sent" title={`${s.sent.replace('T', ' ')}에 프롬프트로 넘김`}>
+                넘김
+              </span>
+            )
+          )}
         </button>
-        <button className="ev-del" onClick={props.onDelete} title="이 증거 삭제" aria-label="이 증거 삭제">
-          ✕
-        </button>
+        {mode === 'mine' && (
+          <button className="ev-del" onClick={() => bn.removeItem(s.id, false)} title="이 항목 삭제" aria-label="이 항목 삭제">
+            ✕
+          </button>
+        )}
       </div>
       {open && (
         <div className="ev-body">
-          <Target ev={ev} />
-          {ev.kind !== 'paste' && evidenceSummary(ev) && <div className="sum">{evidenceSummary(ev)}</div>}
-          {ev.kind === 'network' && (
-            <details className="net">
-              <summary>호출 목록</summary>
-              {(ev.requests ?? []).map((r, i) => (
-                <div key={i} className="net-row mono">
-                  <span className={r.status === 0 || r.status >= 400 ? 'bad' : ''}>{r.status || 'ERR'}</span> {r.method}{' '}
-                  {new URL(r.url).pathname} · {formatSize(r.size)}
+          {ev ? (
+            <>
+              <Target ev={ev} />
+              {ev.kind !== 'paste' && evidenceSummary(ev) && <div className="sum">{evidenceSummary(ev)}</div>}
+              {ev.kind === 'network' && (
+                <details className="net">
+                  <summary>호출 목록</summary>
+                  {(ev.requests ?? []).map((r, i) => (
+                    <div key={i} className="net-row mono">
+                      <span className={r.status === 0 || r.status >= 400 ? 'bad' : ''}>{r.status || 'ERR'}</span> {r.method}{' '}
+                      {new URL(r.url).pathname} · {formatSize(r.size)}
+                    </div>
+                  ))}
+                </details>
+              )}
+              {ev.screenshot && ev.kind !== 'paste' && (
+                <img className={shot ? 'shot' : 'thumb'} src={ev.screenshot} alt="스크린샷" onClick={() => setShot(!shot)} title={shot ? '작게 보기' : '스크린샷 크게 보기'} />
+              )}
+            </>
+          ) : (
+            <div className="target">
+              {s.page && (
+                <div className="target-page">
+                  <span className="target-page-label">페이지</span>
+                  <span className="mono">{s.page}</span>
                 </div>
-              ))}
-            </details>
+              )}
+              <p className="muted small">
+                {mode === 'other'
+                  ? `${hostOf(s.app)} 에서 만든 항목입니다. 그 주소 탭에서 열면 고칠 수 있습니다.`
+                  : `자세한 내용은 .pinproof/items/${mode === 'archived' ? 'archive/' : ''}${s.fileName} 에 있습니다.`}
+              </p>
+            </div>
           )}
-          {ev.screenshot && ev.kind !== 'paste' && (
-            <img className={shot ? 'shot' : 'thumb'} src={ev.screenshot} alt="스크린샷" onClick={() => setShot(!shot)} title={shot ? '작게 보기' : '스크린샷 크게 보기'} />
+          {editable ? (
+            <textarea
+              className="ev-note"
+              rows={2}
+              value={ev!.note}
+              placeholder="메모 (선택)"
+              onKeyDown={(e) => {
+                // 항목 md 에 한 줄로 들어가는 메모라 Enter 로 줄을 나누지 않는다(긴 글은 칸 안에서 자동 줄바꿈)
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault();
+              }}
+              onChange={(e) => bn.updateNote(s.id, e.target.value.replace(/\s*\n\s*/g, ' '))}
+            />
+          ) : (
+            note && ev && <div className="sum">메모 · {note}</div>
           )}
-          <textarea
-            className="ev-note"
-            rows={2}
-            value={ev.note}
-            placeholder="메모 (선택)"
-            onKeyDown={(e) => {
-              // 기록 md 에 한 줄로 들어가는 메모라 Enter 로 줄을 나누지 않는다(긴 글은 칸 안에서 자동 줄바꿈)
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault();
-            }}
-            onChange={(e) => props.onNote(e.target.value.replace(/\s*\n\s*/g, ' '))}
-          />
           <div className="ev-actions">
-            {ev.selector && (
-              <button className="go-page" onClick={props.onGo} title="이 증거를 담은 화면으로 가서 그 요소를 찾아 반짝입니다">
+            {mode === 'mine' && ev?.selector && (
+              <button className="go-page" onClick={() => bn.goTo(ev)} title="이 항목을 담은 화면으로 가서 그 요소를 찾아 반짝입니다">
                 해당 페이지로 이동
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M4.5 2.5h5v5M9.5 2.5L3 9" />
                 </svg>
               </button>
             )}
-            {props.moves.length > 0 && (
+            {mode !== 'archived' && (
+              <button onClick={() => bn.copyItem(s.id)} title="이 항목만 넘기는 프롬프트 복사">
+                프롬프트 복사
+              </button>
+            )}
+            {mode === 'archived' && (
+              <>
+                <button onClick={() => bn.restoreItem(s.id)} title="다시 대기 항목으로">
+                  되돌리기
+                </button>
+                <button className="danger" onClick={() => bn.removeItem(s.id, true)}>
+                  삭제
+                </button>
+              </>
+            )}
+            {editable && moves.length > 0 && (
               <span className="move">
-                <select className="move-to" value={moveTo} aria-label="옮길 곳" onChange={(e) => setMoveTo(e.target.value)}>
-                  {props.moves.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
+                <select className="move-to" value={moveTo} aria-label="옮길 카테고리" onChange={(e) => setMoveTo(e.target.value)}>
+                  {moves.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
                     </option>
                   ))}
                 </select>
-                <button className="move-go" onClick={() => props.onMoveTo(moveTo)}>
+                <button className="move-go" onClick={() => bn.moveItemTo(s.id, moveTo)}>
                   이동
                 </button>
               </span>
@@ -592,93 +675,66 @@ function EvidenceRow(props: {
   );
 }
 
-function InboxSection({ bn }: { bn: PinProof }) {
-  const [open, setOpen] = useState(true);
-  const [openUid, toggle] = useOneOpen(bn.freshUid, bn.inbox.map((e) => e.uid));
-  if (bn.inbox.length === 0) return null;
+/** 아래쪽 접힌 구역(보관함 · 다른 주소 항목 · 이전 기록). 비어 있으면 그리지 않는다 */
+function Folded(props: { title: string; count: number; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (props.count === 0) return null;
   return (
-    <section className="section inbox">
-      <button className="section-head" onClick={() => setOpen(!open)}>
-        {open ? '▾' : '▸'} 미분류 <span className="count">{bn.inbox.length}</span>
+    <section className={`section ${props.className ?? ''}`}>
+      <button className="section-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>
+          {open ? '▾' : '▸'} {props.title}
+        </span>
+        <span className="count">{props.count}</span>
       </button>
-      {open &&
-        bn.inbox.map((e) => (
-          <EvidenceRow
-            key={e.uid}
-            ev={e}
-            fresh={bn.freshUid === e.uid}
-            open={openUid === e.uid}
-            onToggle={() => toggle(e.uid)}
-            onNote={(note) => bn.setInboxNote(e.uid, note)}
-            onLocate={() => bn.locate(e)}
-            onGo={() => bn.goTo(e)}
-            moves={[...(bn.draft ? [{ value: 'draft', label: `작성 중 기록 #${padId(bn.draft.id)}` }] : []), ...recordMoves(bn)]}
-            onMoveTo={(to) => moveEvidence(bn, e.uid, to)}
-            onDelete={() => bn.removeInbox(e.uid)}
-          />
-        ))}
+      {open && props.children}
     </section>
   );
 }
 
-function RecordList({ bn }: { bn: PinProof }) {
-  const [showArchived, setShowArchived] = useState(false);
-  const [showOthers, setShowOthers] = useState(false);
-  const inView = bn.records.filter((r) => r.archived === showArchived);
-  // 같은 폴더에 여러 주소(localhost·배포 주소)를 연결할 수 있어, 지금 주소에서 만든 기록만 기본으로 보인다.
-  // 주소가 없는 옛 기록은 어느 쪽인지 몰라 함께 보인다. 다른 주소의 기록은 그 주소 탭에서만 다시 열어 편집된다
-  const list = inView.filter((r) => !r.app || r.app === bn.origin);
-  const others = inView.filter((r) => r.app && r.app !== bn.origin);
+/** 보관함·다른 주소 항목처럼 대기 목록 밖의 항목들(번호 내림차순, 하나만 펼치기) */
+function ItemGroup({ bn, views, mode }: { bn: PinProof; views: ItemView[]; mode: 'other' | 'archived' }) {
+  const sorted = [...views].sort((a, b) => b.summary.id - a.summary.id);
+  const [openId, toggle] = useOneOpen(
+    null,
+    sorted.map((v) => v.summary.id),
+  );
   return (
-    <section className="section records">
-      <div className="section-head static">
-        <span>
-          {showArchived ? '보관함' : '기록'} <span className="count">{list.length}</span>
-        </span>
-        <button className="link" onClick={() => setShowArchived(!showArchived)}>
-          {showArchived ? '기록 보기' : '보관함 보기'}
-        </button>
-      </div>
-      {list.length === 0 && <p className="muted small">{showArchived ? '보관한 기록이 없습니다.' : '아직 기록이 없습니다.'}</p>}
+    <div className="ev-list">
+      {sorted.map((v) => (
+        <ItemRow key={v.summary.id} bn={bn} view={v} mode={mode} open={openId === v.summary.id} onToggle={() => toggle(v.summary.id)} />
+      ))}
+    </div>
+  );
+}
+
+/** 카테고리 이전의 기록(이슈 단위). 읽기 전용: 프롬프트 복사 · 보관 · 삭제만 */
+function OldRecords({ bn }: { bn: PinProof }) {
+  const list = [...bn.records].sort((a, b) => Number(a.archived) - Number(b.archived) || b.id - a.id);
+  return (
+    <Folded title="이전 기록" count={list.length} className="records">
+      <p className="muted small">카테고리로 바뀌기 전의 기록입니다. 읽기만 되고, 새 항목은 위 카테고리에 쌓입니다.</p>
       {list.map((r) => (
         <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
       ))}
-      {others.length > 0 && (
-        <div className="others">
-          <button className="link others-toggle" onClick={() => setShowOthers(!showOthers)}>
-            {showOthers ? '다른 주소 기록 접기' : `다른 주소 기록 ${others.length}건 보기`}
-          </button>
-          {showOthers &&
-            others.map((r) => (
-              <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
-            ))}
-        </div>
-      )}
-    </section>
+    </Folded>
   );
 }
 
 function RecordRow({ r, bn }: { r: RecordSummary; bn: PinProof }) {
-  const editing = bn.draft?.id === r.id;
-  /** 다른 주소에서 만든 기록: 그 주소 탭에서만 다시 열어 편집된다 */
   const other = !!r.app && r.app !== bn.origin;
-  const otherHost = other ? r.app!.replace(/^https?:\/\//, '') : '';
   return (
-    <div className={`rec ${editing ? 'editing' : ''} ${other ? 'other' : ''}`}>
-      <button
-        className="rec-main"
-        onClick={() => bn.openRecord(r)}
-        disabled={r.archived || editing || other}
-        title={other ? `${otherHost} 에서 만든 기록입니다. 그 주소 탭에서 열면 편집할 수 있습니다.` : r.archived ? '' : '다시 열어 증거 추가·수정'}
-      >
+    <div className={`rec ${other ? 'other' : ''}`}>
+      <div className="rec-main">
         <span className="mono strong">#{padId(r.id)}</span>
         <span className="rec-title">{r.title || '(제목 없음)'}</span>
         <span className="rec-meta">
           {r.type} · 증거 {r.evidenceCount}
+          {r.archived && ' · 보관함'}
           {r.hasResult && <span className="done"> · 처리 기록 있음</span>}
-          {other && <span className="mono"> · {otherHost}</span>}
+          {other && <span className="mono"> · {hostOf(r.app)}</span>}
         </span>
-      </button>
+      </div>
       <div className="rec-actions">
         <button onClick={() => bn.copyRecord(r.fileName, r.archived)} title="프롬프트 복사">
           복사

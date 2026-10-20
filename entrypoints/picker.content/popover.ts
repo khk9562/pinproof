@@ -18,8 +18,8 @@ export interface PopoverHead {
 
 export interface NewOptions {
   head: PopoverHead;
-  /** 담길 곳: 작성 중 기록 번호와 붙을 문자. null 이면 미분류 */
-  to: { recordId: number; letter: string } | null;
+  /** 담길 곳: 지금 카테고리와 붙을 번호. null 이면 폴더 미연결 */
+  to: { category: string; num: number } | null;
   /** 팝오버를 붙일 가로 위치(클릭 x) */
   x: number;
   /** 대상 영역(선택 강조·팝오버 위/아래 배치 기준) */
@@ -34,13 +34,10 @@ export interface NewOptions {
 
 export interface EditOptions {
   marker: MarkerInfo;
-  /** 작성 중 기록 번호(미분류 마커를 넣을 곳). 없으면 null */
-  recordId: number | null;
   x: number;
   target: Box;
   onSave: (note: string) => void;
   onDelete: () => void;
-  onMove: () => void;
   onClose: () => void;
 }
 
@@ -80,11 +77,11 @@ export class Popover {
   openNew(o: NewOptions) {
     this.close(false);
     const to = o.to
-      ? `<span class="p-to" title="작성 중인 기록 #${pad(o.to.recordId)} 에 ${o.to.letter} 로 담깁니다"><span class="lt temp">${o.to.letter}</span><b>#${pad(o.to.recordId)}</b></span>`
-      : '<span class="p-to loose" title="작성 중인 기록이 없어 미분류로 담깁니다">미분류</span>';
+      ? `<span class="p-to" title="&quot;${esc(o.to.category)}&quot;에 #${pad(o.to.num)} 로 담깁니다"><span class="lt temp">${o.to.num}</span><span class="p-cat">${esc(o.to.category)}</span></span>`
+      : '<span class="p-to loose" title="사이드 패널에서 프로젝트 폴더를 연결하면 담을 수 있습니다">폴더 미연결</span>';
     const card = this.build(
       'pop',
-      '증거 담기',
+      '항목 담기',
       `<div class="p-head"><div class="who">${headHtml(o.head, to)}</div></div>
        <div class="field">
          <textarea rows="1" maxlength="1000" placeholder="한 줄 메모 (선택)"></textarea>
@@ -110,7 +107,7 @@ export class Popover {
     this.wire(card, ta, submit, { ok: submit, cancel: () => this.cancel() });
     this.showTarget(o.target, o.el);
     if (o.pin) {
-      this.pin.textContent = o.to ? o.to.letter : '';
+      this.pin.textContent = o.to ? String(o.to.num) : '';
       this.pin.classList.toggle('loose', !o.to);
       Object.assign(this.pin.style, { left: `${o.pin.x}px`, top: `${o.pin.y}px` });
       this.pin.hidden = false;
@@ -122,20 +119,15 @@ export class Popover {
   openEdit(o: EditOptions) {
     this.close(false);
     const m = o.marker;
-    const badge = m.letter ? `<span class="lt">${m.letter}</span>` : '<span class="lt loose" title="미분류"></span>';
-    const move = m.letter
-      ? '<button class="btn-move" data-act="move" title="작성 중인 기록에서 빼서 미분류로"><i></i>미분류로</button>'
-      : o.recordId !== null
-        ? `<button class="btn-move" data-act="move" title="작성 중인 기록에 넣기"><b>#${pad(o.recordId)}</b>에 넣기</button>`
-        : '';
+    const badge = `<span class="lt">${m.num}</span>`;
+    const cat = `<span class="p-to plain" title="카테고리는 사이드 패널에서 바꿉니다"><span class="p-cat">${esc(m.category)}</span></span>`;
     const card = this.build(
       'pop edit',
-      `증거 ${m.letter ?? '(미분류)'} 편집`,
-      `<div class="p-head">${badge}<div class="who">${headHtml(headOf(m), '')}</div></div>
+      `항목 #${pad(m.num)} 편집`,
+      `<div class="p-head">${badge}<div class="who">${headHtml(headOf(m), cat)}</div></div>
        <div class="field"><textarea rows="1" maxlength="1000" placeholder="한 줄 메모 (선택)"></textarea></div>
        <div class="p-foot">
-         <button class="btn-del" data-act="delete" title="이 증거 삭제">${ICON.trash}삭제</button>
-         ${move}
+         <button class="btn-del" data-act="delete" title="이 항목 삭제">${ICON.trash}삭제</button>
          <span class="sp"></span>
          <button class="btn-main" data-act="ok" disabled title="바뀐 내용이 없습니다">저장</button>
        </div>`,
@@ -163,11 +155,6 @@ export class Popover {
       delete: () => {
         this.close(true);
         o.onDelete();
-        o.onClose();
-      },
-      move: () => {
-        this.close(true);
-        o.onMove();
         o.onClose();
       },
     });

@@ -142,7 +142,7 @@ kbd {
   display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; margin-left: 2px;
   border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky-soft); font-size: 12px; font-weight: 500; white-space: nowrap;
 }
-.rec b { font-family: var(--mono); font-weight: 600; }
+.rec .cat { max-width: 120px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .rec.loose { background: var(--surface-2); color: var(--text-2); }
 .rec.loose::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--gray-dot); }
 .rec .n { display: inline-block; height: 16px; line-height: 16px; overflow: hidden; vertical-align: middle; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -156,14 +156,15 @@ kbd {
 .pins { position: fixed; inset: 0; pointer-events: none; transition: opacity var(--t); }
 .pins.off { opacity: 0; }
 .pins.off .pin { pointer-events: none; }
+/* 번호 마커: 세 자리까지 늘어나는 알약. 폭이 달라도 자리 중심에 오게 translate 로 맞춘다 */
 .pin {
-  position: fixed; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0; border: 0; border-radius: 50%;
+  position: fixed; min-width: 22px; height: 22px; padding: 0 6px; border: 0; border-radius: var(--pill); translate: -50% -50%; font-variant-numeric: tabular-nums;
   background: var(--sky); color: var(--on-sky); font: 700 11px/22px var(--sans); text-align: center;
   box-shadow: 0 0 0 2px var(--bg), var(--shadow-float); pointer-events: auto;
   transition: transform var(--t), box-shadow var(--t);
 }
 .pin:hover { transform: scale(1.15); }
-.pin.loose { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--gray-dot); font-size: 0; }
+.pin.loose { min-width: 12px; width: 12px; height: 12px; padding: 0; background: var(--gray-dot); font-size: 0; }
 .pin.temp { background: var(--bg); color: var(--navy); box-shadow: inset 0 0 0 1.5px var(--navy), 0 0 0 2px var(--bg), var(--shadow-float); }
 .pin.temp.loose { background: var(--gray-dot); box-shadow: 0 0 0 2px var(--bg), var(--shadow-float); }
 .pin.editing { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--navy), var(--shadow-float); }
@@ -178,12 +179,12 @@ kbd {
 .pin:hover .tip { opacity: 1; visibility: visible; }
 /* 핀 꽂힘 + 하늘색 링 한 번 */
 .pin.drop { animation: pp-pin-drop .32s var(--ease); }
-.pin.drop::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--sky); pointer-events: none; animation: pp-ring-out .6s ease-out forwards; }
+.pin.drop::after { content: ""; position: absolute; inset: 0; border-radius: var(--pill); border: 3px solid var(--sky); pointer-events: none; animation: pp-ring-out .6s ease-out forwards; }
 @keyframes pp-pin-drop { 0% { opacity: 0; transform: translateY(-12px) scale(.6); } 62% { opacity: 1; transform: translateY(0) scale(1.08); } 100% { opacity: 1; transform: none; } }
 @keyframes pp-ring-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(2.27); } }
 /* 패널 목록 클릭 → 마커 찾기: 펄스 3회 + 남색 링 */
 .pin.target { animation: pp-pulse .6s ease-in-out 3; }
-.pin.target::before { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid var(--navy); pointer-events: none; animation: pp-ring-hold 1.8s linear forwards; }
+.pin.target::before { content: ""; position: absolute; inset: -5px; border-radius: var(--pill); border: 3px solid var(--navy); pointer-events: none; animation: pp-ring-hold 1.8s linear forwards; }
 @keyframes pp-pulse { 0%, 100% { transform: none; } 50% { transform: scale(1.2); } }
 @keyframes pp-ring-hold { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 .pin.leaving { animation: pp-pin-out .18s ease forwards; pointer-events: none; }
@@ -210,11 +211,11 @@ kbd {
 .p-meta { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .p-src { font: 11px/1.4 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-to { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px 0 2px; border-radius: var(--pill); background: var(--sky-soft); color: var(--on-sky-soft); font-size: 12px; }
-.p-to b { font-family: var(--mono); font-weight: 600; }
+.p-to .p-cat { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.p-to.plain { padding-left: 7px; }
 .p-to.loose { background: var(--surface-2); color: var(--text-2); padding-left: 7px; }
-.lt { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--sky); color: var(--on-sky); font: 700 11px/1 var(--sans); flex: none; }
+.lt { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--pill); font-variant-numeric: tabular-nums; background: var(--sky); color: var(--on-sky); font: 700 11px/1 var(--sans); flex: none; }
 .lt.temp { background: var(--bg); color: var(--navy); box-shadow: inset 0 0 0 1.5px var(--navy); }
-.lt.loose { width: 10px; height: 10px; background: var(--gray-dot); margin: 4px; }
 .field { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); transition: border-color var(--t), box-shadow var(--t); }
 .field:focus-within { border-color: var(--navy); box-shadow: 0 0 0 3px var(--navy-soft); }
 .field textarea {
@@ -234,10 +235,6 @@ kbd {
 .btn-main:disabled { background: var(--surface-2); color: var(--text-3); cursor: default; }
 .btn-del { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border: 0; border-radius: var(--pill); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; transition: background var(--t), color var(--t); }
 .btn-del:hover { color: var(--red); background: var(--surface); }
-.btn-move { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--pill); background: var(--bg); color: var(--text-2); font-size: 12px; font-weight: 500; transition: border-color var(--t), color var(--t); }
-.btn-move:hover { border-color: var(--navy); color: var(--text); }
-.btn-move i { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-dot); }
-.btn-move b { font-family: var(--mono); font-weight: 600; }
 
 /* ---------- 경고 (패널 미연결·스크린샷 권한 등). 아래 가운데 툴바와 겹치지 않게 그 위에 ---------- */
 .toast {

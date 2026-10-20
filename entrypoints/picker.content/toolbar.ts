@@ -1,6 +1,8 @@
 import { OverlayState, PickMode } from '@/lib/messages';
 import { ICON, PIN_LOGO } from './icons';
 
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
 const MODE_NAME: Record<PickMode, string> = { element: '요소', text: '텍스트', region: '영역' };
 /** 모드 중 안내 띠의 모드 이름을 누르면 여는 선택 메뉴 항목 */
 const MENU: { pick: PickMode | 'network'; name: string; key: string }[] = [
@@ -150,15 +152,14 @@ export class Toolbar {
   }
 
   setState(state: OverlayState) {
-    const r = state.record;
-    const count = r ? r.count : state.inboxCount;
+    const count = state.pending;
+    const off = state.nextNumber === null;
     const grew = this.count !== null && count > this.count && !this.el.hidden;
     const prev = this.count;
     this.count = count;
-    this.rec.classList.toggle('loose', !r);
-    this.rec.title = r ? `작성 중인 기록 #${String(r.id).padStart(3, '0')} ${r.title}` : '작성 중인 기록이 없어 담는 증거는 미분류로 갑니다';
-    const head = r ? `<b>#${String(r.id).padStart(3, '0')}</b>작성 중 · ` : '미분류 · ';
-    this.rec.innerHTML = `${head}<span class="n"><i>${count}</i></span>`;
+    this.rec.classList.toggle('loose', off);
+    this.rec.title = off ? '사이드 패널에서 프로젝트 폴더를 연결하면 담을 수 있습니다' : `담는 곳: "${state.category}" · 대기 항목 ${count}건`;
+    this.rec.innerHTML = `<span class="cat">${esc(state.category)}</span> · 대기 <span class="n"><i>${count}</i></span>`;
     if (grew) {
       const n = this.rec.querySelector('.n')!;
       n.innerHTML = `<span class="roll" style="display:block"><i>${prev}</i><i>${count}</i></span>`;

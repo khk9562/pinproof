@@ -10,7 +10,7 @@ type Item = { m: MarkerInfo; el: HTMLButtonElement; target: Element | null; last
 const REFIND_MS = 500;
 
 /**
- * 담은 증거를 요소 위 테두리에 A·B·C 마커로 보여준다(미분류는 문자 없는 회색 점).
+ * 담은 항목을 요소 위 테두리에 번호 마커로 보여준다.
  * 지금 주소(경로 + ?쿼리 + #해시)에서 담은 증거만, 요소가 화면에 있을 때만 보인다. 매 프레임 tick() 으로 위치를 맞춘다.
  */
 export class Markers {
@@ -141,11 +141,10 @@ export class Markers {
 
   private render(it: Item) {
     const m = it.m;
-    it.el.classList.toggle('loose', !m.letter);
-    it.el.setAttribute('aria-label', m.letter ? `증거 ${m.letter} 편집` : '미분류 증거 편집');
-    const who = m.letter ?? '미분류';
+    const id = `#${String(m.num).padStart(3, '0')}`;
+    it.el.setAttribute('aria-label', `항목 ${id} 편집`);
     const note = m.note ? esc(m.note) : '<span class="none">메모 없음</span>';
-    it.el.innerHTML = `${m.letter ?? ''}<span class="tip">${who} · ${note}</span>`;
+    it.el.innerHTML = `${m.num}<span class="tip">${id} ${esc(m.category)} · ${note}</span>`;
   }
 
   private leave(el: HTMLElement) {

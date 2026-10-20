@@ -287,10 +287,10 @@ class Picker {
     this.toolbar.setMarkersHidden(this.markersHidden);
   }
 
-  /** 담길 곳: 작성 중 기록이 있으면 그 번호와 다음 문자 */
-  private destination(): { recordId: number; letter: string } | null {
+  /** 담길 곳: 지금 카테고리와 붙을 번호. 폴더를 연결하지 않았으면 null */
+  private destination(): { category: string; num: number } | null {
     const s = this.state;
-    return s?.record && s.nextLetter ? { recordId: s.record.id, letter: s.nextLetter } : null;
+    return s && s.nextNumber !== null ? { category: s.category, num: s.nextNumber } : null;
   }
 
   /** 지금 주소(경로 + ?쿼리 + #해시)에서 같은 대상을 이미 담았으면 그 마커 */
@@ -321,12 +321,10 @@ class Picker {
     const send = (edit: EvidenceEdit) => this.send({ type: 'bn:edit', uid: m.uid, edit }).catch(() => {});
     this.popover.openEdit({
       marker: m,
-      recordId: this.state?.record?.id ?? null,
       x: p?.x ?? target.left + target.width / 2,
       target,
       onSave: (note) => send({ action: 'note', note }),
       onDelete: () => send({ action: 'delete' }),
-      onMove: () => send({ action: 'move' }),
       onClose: () => this.markers.setEditing(null),
     });
   }
