@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   copyPrompt,
   isEmptyRecord,
+  itemsPrompt,
+  parseItemSummary,
+  renderItem,
+  statusOf,
+  withStatus,
   pagePath,
   sameTarget,
   idFromFileName,
@@ -213,5 +218,40 @@ describe('isEmptyRecord', () => {
     expect(isEmptyRecord({ ...blank, related: '#1' })).toBe(false);
     expect(isEmptyRecord({ ...blank, memo: 'x' })).toBe(false);
     expect(isEmptyRecord({ ...blank, evidence: record.evidence.slice(0, 1) })).toBe(false);
+  });
+});
+
+describe('항목(items/)', () => {
+  const ev = { ...record.evidence[0], note: '총합이 목록 합과 다름' };
+  const item = { id: 13, category: '데이터 정합성', status: '대기' as const, created: '2026-10-20T10:00', app: 'http://localhost:5190', evidence: ev };
+  const md = renderItem(item);
+
+  it('frontmatter 에 카테고리·상태·메모, 본문에 증거와 스크린샷 경로', () => {
+    expect(md).toContain('category: "데이터 정합성"\nstatus: 대기');
+    expect(md).toContain('note: "총합이 목록 합과 다름"');
+    expect(md).toContain('# #013 · 데이터 정합성');
+    if (ev.screenshot) expect(md).toContain('](assets/013.png)');
+  });
+
+  it('요약 파싱은 렌더와 짝이 맞는다', () => {
+    const s = parseItemSummary(md, '013.md', false)!;
+    expect(s).toMatchObject({ id: 13, category: '데이터 정합성', status: '대기', note: '총합이 목록 합과 다름', hasResult: false });
+    // 파일의 한국어 라벨(kind: 요소)을 원래 종류로 되돌린다
+    expect(s.kind).toBe('element');
+    expect(parseItemSummary(`${md}\n## 처리 기록\n- 고침`, '013.md', true)!.hasResult).toBe(true);
+  });
+
+  it('상태 줄만 바꾸고 읽는다(에이전트가 완료로, 되돌리면 대기로)', () => {
+    const done = withStatus(md, '완료');
+    expect(statusOf(done)).toBe('완료');
+    expect(done.replace('status: 완료', 'status: 대기')).toBe(md);
+    expect(statusOf(withStatus(done, '대기'))).toBe('대기');
+  });
+
+  it('카테고리 프롬프트는 넘길 파일만 하나하나 적는다', () => {
+    const p = itemsPrompt(['013.md', '015.md'], '데이터 정합성');
+    expect(p).toContain('"데이터 정합성" 카테고리의 아래 항목 2건');
+    expect(p).toContain('- `.pinproof/items/013.md`\n- `.pinproof/items/015.md`');
+    expect(p).toContain('`status`를 `완료`로');
   });
 });

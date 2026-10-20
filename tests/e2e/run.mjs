@@ -1,7 +1,7 @@
 /**
  * 익스텐션 E2E: Playwright Chromium에 빌드된 익스텐션을 로드하고
- * 1) 프레임워크 없는 fixture 페이지에서 요소·텍스트·영역·네트워크 증거 수집, 페이지 이동 후 계속 수집
- * 2) md 파일 생성·처리 기록 보존·보관 동작
+ * 1) 프레임워크 없는 fixture 페이지에서 요소·텍스트·영역·네트워크를 카테고리 항목으로 담기, 페이지 이동 후 계속 담기
+ * 2) 항목 md 생성·처리 기록 보존·프롬프트 넘김 표시·완료 시 자동 보관·되돌리기
  * 3) (heureum dev 서버가 떠 있으면) React 19 어댑터의 컴포넌트·소스 위치 감지
  * 를 확인한다. 폴더 선택 창은 자동화할 수 없어 ?opfs=1 로 익스텐션 OPFS를 프로젝트 폴더 대신 쓴다.
  *
@@ -120,7 +120,7 @@ try {
     await write(root, '.gitignore', 'node_modules\n');
   });
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
-  await panel.getByText('작성 중인 기록이 없습니다').waitFor();
+  await panel.locator('.cat.current').waitFor();
   check((await readOpfs('.pinproof/WORKFLOW.md'))?.includes('# PinProof 처리 절차'), 'WORKFLOW.md 생성');
   check((await readOpfs('.claude/commands/pinproof.md')) === null, '프로젝트에 /pinproof 커맨드를 만들지 않음');
   check((await readOpfs('.git/info/exclude')) === '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n', '.git/info/exclude 에 .pinproof/ 추가');
@@ -183,27 +183,45 @@ try {
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   check(!(await panel.getByRole('button', { name: /^요소/ }).count()), '패널에는 모드 버튼 없음(툴바로 옮김)');
 
-  // ---------- 미분류 ----------
+  // ---------- 카테고리 ----------
+  // 프롬프트 복사는 클립보드 대신 여기로 받는다(자동화 창은 클립보드 권한이 없을 수 있어서)
+  await panel.evaluate(() => {
+    window.__clip = '';
+    navigator.clipboard.writeText = async (t) => {
+      window.__clip = t;
+    };
+  });
+  panel.on('dialog', (d) => d.accept());
+  const catPick = panel.locator('.cat-pick select');
+  const current = panel.locator('.cat.current');
+  const rows = () => current.locator('.ev');
+  const addCategory = async (name) => {
+    await panel.getByRole('button', { name: '+ 새 카테고리' }).click();
+    await panel.getByLabel('새 카테고리 이름').fill(name);
+    await panel.getByRole('button', { name: '만들기' }).click();
+    await panel.waitForTimeout(300);
+  };
+  check((await catPick.inputValue()) === '미분류', '처음 담을 곳은 미분류');
+  await addCategory('데이터 정합성');
+  check((await catPick.inputValue()) === '데이터 정합성' && (await current.locator('.cat-name').textContent()) === '데이터 정합성', '새 카테고리를 만들면 그곳에 담기 시작');
+  check(JSON.parse(await readOpfs('.pinproof/categories.json')).join(',') === '미분류,데이터 정합성', 'categories.json 에 카테고리 목록');
+  await app.waitForTimeout(300);
+  const chip = await app.locator('pinproof-overlay .tb .rec').textContent();
+  check(chip.includes('데이터 정합성') && chip.includes('대기 0'), `툴바 칩에 지금 카테고리와 대기 개수: ${chip}`);
+
+  // ---------- 요소 ----------
   await tool('요소').click();
   check(await ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode')), '모드에 들어가면 툴바가 안내 띠로 변신');
   await app.hover('#help');
   await app.click('#help'); // 실제 마우스 클릭 → 그 자리에 팝오버
   await pop.waitFor({ timeout: 5000 });
-  check(await pop.locator('.p-to.loose').isVisible(), '작성 중 기록이 없으면 팝오버가 "미분류"로 담긴다고 표시');
+  const to1 = await pop.locator('.p-to').textContent();
+  check(to1.includes('1') && to1.includes('데이터 정합성'), `팝오버에 담길 곳 "번호 + 카테고리": ${to1}`);
   await confirm();
-  await panel.locator('.section .ev').first().waitFor({ timeout: 5000 }).catch(() => {});
-  check((await panel.locator('.section .ev').count()) === 1, '클릭 → 팝오버 Enter 로 담기 + 작성 중인 건이 없을 때는 미분류로');
-  check((await panel.locator('.section .ev .target-sel').first().textContent()) === '#help', '미분류 카드에 선택한 요소 표시');
+  await rows().first().waitFor({ timeout: 5000 }).catch(() => {});
+  check((await rows().count()) === 1, '클릭 → 팝오버 Enter 로 지금 카테고리에 담김');
   await app.waitForTimeout(300);
-  check((await pins()).join(',') === '·', '미분류 증거는 문자 없는 회색 마커');
-
-  // ---------- 새 기록 + 요소 ----------
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('대시보드 총합 불일치');
-  await panel.getByPlaceholder(/현상 · 기대/).fill('총합은 10인데 노드 목록 CPU를 더하면 100이 넘음');
-  await panel.getByPlaceholder('예: #589').fill('#589');
-  await app.waitForTimeout(300);
-  check((await app.locator('pinproof-overlay .tb .rec').textContent()).includes('#001'), '툴바 기록 칩에 작성 중 기록 번호');
+  check((await pins()).join(',') === '1', `마커에 항목 번호: ${(await pins()).join(',')}`);
 
   await app.hover('[data-testid="summary-total"]');
   // ↑ 로 부모 카드까지 올라갔다가 ↓ 로 되돌아오는 키보드 이동
@@ -216,15 +234,16 @@ try {
   await pop.locator('textarea').fill('총합 숫자가 목록 합과 다름');
   await app.waitForTimeout(350);
   await app.screenshot({ path: path.join(outDir, 'page-popover.png') });
-  check((await pop.locator('.p-to').textContent()).includes('A') && (await pop.locator('.p-to').textContent()).includes('#001'), '팝오버 머리에 "#001 에 A 로 담김"');
+  check((await pop.locator('.p-to .lt').textContent()) === '2', '팝오버의 다음 번호는 2');
   check((await pop.locator('.p-name').textContent()).includes('<strong>'), '팝오버 머리에 요소 이름');
   await confirm('총합 숫자가 목록 합과 다름');
   const dropped = await app.locator('pinproof-overlay .pin.drop').waitFor({ timeout: 1000 }).then(() => true, () => false);
   check(dropped, '담으면 새 마커에 꽂힘 애니메이션');
-  await panel.locator('.draft .ev').first().waitFor();
+  await rows().nth(1).waitFor();
 
-  // 방금 담은 줄은 펼쳐져 요소 이름·selector 를 보여주고, 페이지에는 A 마커가 꽂힌다
+  // 방금 담은 줄은 펼쳐져 요소 이름·selector 를 보여준다
   const fresh = panel.locator('.ev.fresh');
+  check((await fresh.locator('.num').textContent()) === '2', '패널 줄에 번호 배지');
   check((await fresh.locator('.target-name').textContent()) === '<strong>', '패널에 방금 담은 요소 이름 표시');
   check((await fresh.locator('.target-sel').textContent()) === '[data-testid="summary-total"]', '패널에 selector 표시');
   check((await fresh.locator('.memo').textContent()) === '총합 숫자가 목록 합과 다름', '팝오버에서 쓴 메모가 한 줄 목록에');
@@ -232,41 +251,44 @@ try {
   await app.mouse.move(1, 1);
   await app.waitForTimeout(400);
   await app.screenshot({ path: path.join(outDir, 'page-markers.png') });
-  check((await pins()).sort().join(',') === 'A,·', `페이지에 A 마커 + 미분류 점: ${(await pins()).join(',')}`);
-  check((await ov((h) => h.shadowRoot.querySelector('.pin:not(.loose) .tip').textContent)).includes('총합 숫자가'), '마커 툴팁에 메모');
+  check((await pins()).sort().join(',') === '1,2', `페이지에 번호 마커 1·2: ${(await pins()).join(',')}`);
+  const tip = await ov((h) => [...h.shadowRoot.querySelectorAll('.pin .tip')].map((t) => t.textContent).find((t) => t.includes('총합')) ?? '');
+  check(tip.includes('#002') && tip.includes('데이터 정합성'), `마커 툴팁에 번호·카테고리·메모: ${tip}`);
   // 같은 경로라도 ?tab= 처럼 쿼리로 화면이 바뀌면 마커를 숨기고, 원래 주소로 돌아오면 다시 보인다 (SPA 이동)
   await app.evaluate(() => history.pushState(null, '', '/dashboard?tab=other'));
   await app.waitForTimeout(300);
   check((await pins()).length === 0, `쿼리만 바뀐 화면(?tab=other)에서는 마커 숨김: ${(await pins()).join(',')}`);
   await app.evaluate(() => history.pushState(null, '', '/dashboard'));
   await app.waitForTimeout(300);
-  check((await pins()).sort().join(',') === 'A,·', '원래 주소로 돌아오면 마커 다시 보임');
+  check((await pins()).sort().join(',') === '1,2', '원래 주소로 돌아오면 마커 다시 보임');
 
   // ✕ 로 삭제 → 다시 담기
   await app.keyboard.press('Escape');
   check(!(await ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode'))), 'Esc 로 모드 종료 → 툴바 원래대로');
   await fresh.locator('.ev-del').click();
   await panel.waitForTimeout(400);
-  check((await panel.locator('.draft .ev').count()) === 0, '✕ 로 증거 삭제');
-  check((await pins()).join(',') === '·', '삭제하면 페이지 마커도 사라짐');
+  check((await rows().count()) === 1 && (await readOpfs('.pinproof/items/002.md')) === null, '✕ 로 항목 삭제(md 도 지움)');
+  check((await pins()).join(',') === '1', '삭제하면 페이지 마커도 사라짐');
   await tool('요소').click();
   await app.mouse.move(1, 1);
   await app.click('[data-testid="summary-total"]'); // 이번엔 클릭으로
   await confirm();
-  await panel.locator('.draft .ev').first().waitFor({ timeout: 5000 }).catch(() => {});
-  check((await panel.locator('.draft .ev').count()) === 1, '요소 모드에서 클릭으로 담기');
-  check((await panel.locator('.draft .ev .target-page').first().textContent()).includes('/dashboard'), '카드에 페이지 경로 표시');
+  await rows().nth(1).waitFor({ timeout: 5000 }).catch(() => {});
+  check((await rows().count()) === 2, '요소 모드에서 클릭으로 담기');
+  check((await panel.locator('.ev.fresh .target-page').first().textContent()).includes('/dashboard'), '줄에 페이지 경로 표시');
+  const summaryNum = await panel.locator('.ev.fresh .num').textContent();
   // 같은 요소를 다시 고르면 새로 담지 않고 그 마커의 편집 팝오버가 열린다
   // (요소가 마커보다 작아 마커가 덮을 수 있다 — 마커를 눌러도 같은 팝오버라 좌표로 누른다)
   await app.click('[data-testid="summary-total"]', { force: true });
   await pop.waitFor({ timeout: 3000 }).catch(() => {});
-  check((await pop.getAttribute('aria-label').catch(() => '')) === '증거 A 편집', '같은 요소를 다시 고르면 A 편집 팝오버(중복 담기 방지)');
+  check((await pop.getAttribute('aria-label').catch(() => '')) === `항목 #${summaryNum.padStart(3, '0')} 편집`, '같은 요소를 다시 고르면 그 항목의 편집 팝오버(중복 담기 방지)');
+  check(!(await pop.locator('.btn-move').count()), '편집 팝오버에는 옮기기 없음(카테고리는 패널에서)');
   // 편집 팝오버에서 메모를 고치면 패널에 반영
   await pop.locator('textarea').fill('페이지에서 고친 메모');
   await pop.getByRole('button', { name: '저장' }).click();
   await panel.waitForTimeout(400);
-  check((await panel.locator('.draft .ev .memo').first().textContent()) === '페이지에서 고친 메모', '마커 편집 팝오버의 메모가 패널에 반영');
-  check((await panel.locator('.draft .ev').count()) === 1, '같은 요소 중복 담기 방지');
+  check((await rows().nth(1).locator('.memo').textContent()) === '페이지에서 고친 메모', '마커 편집 팝오버의 메모가 패널에 반영');
+  check((await rows().count()) === 2, '같은 요소 중복 담기 방지');
   await app.keyboard.press('Escape');
   // 마커 숨기기
   await app.keyboard.press('Alt+Shift+KeyH');
@@ -286,7 +308,7 @@ try {
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
   await confirm();
-  await panel.locator('.draft .ev').nth(1).waitFor();
+  await rows().nth(2).waitFor();
   await app.keyboard.press('Escape'); // 담은 뒤에도 모드는 계속된다 → 끝내야 툴바 버튼이 다시 보인다
 
   // ---------- 영역 ----------
@@ -296,7 +318,7 @@ try {
   await app.mouse.move(400, 200, { steps: 5 });
   await app.mouse.up();
   await confirm();
-  await panel.locator('.draft .ev').nth(2).waitFor();
+  await rows().nth(3).waitFor();
 
   // 모드 중 안내 띠의 모드 이름을 누르면 선택 메뉴가 툴바 위로 열리고, 고르면 모드가 바로 바뀐다
   const modeName = app.locator('pinproof-overlay .guide .mode-name');
@@ -310,10 +332,10 @@ try {
   check(mb.y + mb.height <= tbb.y, '모드 선택 메뉴는 툴바 위로 열림');
   check((await menu.locator('[aria-checked="true"]').textContent()).includes('영역'), '메뉴에 지금 모드(영역) 체크');
   await app.screenshot({ path: path.join(outDir, 'page-mode-menu.png') });
-  const evBefore = await panel.locator('.draft .ev').count();
+  const evBefore = await rows().count();
   await app.mouse.click(700, 300); // 바깥 클릭
   await app.waitForTimeout(300);
-  check((await menu.isHidden()) && (await inMode()) && (await panel.locator('.draft .ev').count()) === evBefore, '바깥 클릭은 메뉴만 닫음(모드·증거 그대로)');
+  check((await menu.isHidden()) && (await inMode()) && (await rows().count()) === evBefore, '바깥 클릭은 메뉴만 닫음(모드·항목 그대로)');
   await modeName.click();
   await menu.waitFor();
   await app.keyboard.press('Escape');
@@ -337,15 +359,15 @@ try {
   await app.keyboard.press('ArrowUp'); // table
   await app.keyboard.press('Enter');
   await confirm();
-  await panel.locator('.draft .ev').nth(3).waitFor();
+  await rows().nth(4).waitFor();
   await app.keyboard.press('Escape');
   await tool('네트워크').click();
-  await panel.locator('.draft .ev').nth(4).waitFor();
+  await rows().nth(5).waitFor();
   await app.waitForTimeout(300);
-  check((await pins()).join(',') === 'D', `다른 페이지(/nodes)에서는 그 페이지의 마커만: ${(await pins()).join(',')}`);
-  check((await panel.locator('.draft .ev').nth(4).locator('.letter.outline').count()) === 1, '페이지 마커가 없는 증거(네트워크)는 테두리 문자');
-  // 패널 목록에서 D 줄을 펼치면 페이지의 D 마커가 반짝인다 (방금 담아 이미 펼쳐져 있으면 접었다가 다시)
-  const dHead = panel.locator('.draft .ev').nth(3).locator('.ev-head');
+  check((await pins()).join(',') === '5', `다른 페이지(/nodes)에서는 그 페이지의 마커만: ${(await pins()).join(',')}`);
+  check((await rows().nth(5).locator('.num.outline').count()) === 1, '페이지 마커가 없는 항목(네트워크)은 테두리 번호');
+  // 패널 목록에서 5번 줄을 펼치면 페이지의 5번 마커가 반짝인다 (방금 담아 이미 펼쳐져 있으면 접었다가 다시)
+  const dHead = rows().nth(4).locator('.ev-head');
   if ((await dHead.getAttribute('aria-expanded')) === 'true') await dHead.click();
   await dHead.click();
   await app.waitForTimeout(700);
@@ -363,160 +385,162 @@ try {
     img.items.add(new File([blob], 'shot.png', { type: 'image/png' }));
     zone.dispatchEvent(new ClipboardEvent('paste', { clipboardData: img, bubbles: true, cancelable: true }));
   });
-  await panel.locator('.draft .ev').nth(5).waitFor();
+  await rows().nth(6).waitFor();
   await panel.evaluate(() => {
     const t = new DataTransfer();
     t.setData('text/plain', 'Slack에서 받은 오류 로그\nError: 403 forbidden');
     document.querySelector('.paste-zone').dispatchEvent(new ClipboardEvent('paste', { clipboardData: t, bubbles: true, cancelable: true }));
   });
-  await panel.locator('.draft .ev').nth(6).waitFor();
-  check((await panel.locator('.ev.paste').count()) === 2, '붙여넣기 이미지·텍스트가 카드로 추가');
+  await rows().nth(7).waitFor();
+  check((await panel.locator('.ev.paste').count()) === 2, '붙여넣기 이미지·텍스트가 항목으로 추가');
   await panel.waitForTimeout(1200);
 
   // ---------- 파일 확인 ----------
-  const names = await readOpfs('.pinproof/');
-  const mdName = names.split(',').find((n) => n.startsWith('001-'));
-  check(mdName === '001-대시보드-총합-불일치.md', `md 파일명: ${mdName}`);
-  const md = await readOpfs(`.pinproof/${mdName}`);
-  fs.writeFileSync(path.join(outDir, mdName), md ?? '');
-  check(md.includes('related: "#589"') && md.includes('evidence: 7'), 'frontmatter');
-  check(md.includes('### F. 붙여넣기 — /nodes') && md.includes('- 이미지: ![F](assets/001/F.png)'), 'F: 붙여넣은 이미지');
-  check(md.includes('### G. 붙여넣기 — /nodes') && md.includes('Error: 403 forbidden'), 'G: 붙여넣은 텍스트');
-  check(md.includes('### A. 요소 — /dashboard') && md.includes('selector: `[data-testid="summary-total"]`'), 'A: data-testid selector');
-  check(md.includes('### B. 텍스트 — /dashboard') && md.includes('선택한 텍스트: "미설치 VM 목록 조회에 실패했습니다"'), 'B: 텍스트 exact');
-  check(md.includes('### C. 영역 — /dashboard') && md.includes('영역 안 요소'), 'C: 영역 + 안쪽 요소');
-  check(/영역 안에 보이던 글자: .*"총 CPU 합계"/.test(md), 'C: 영역 안에 보이던 글자');
-  check(/^updated: \d{4}-/m.test(md), 'frontmatter updated 시각');
-  check(md.includes('### D. 컨테이너 — /nodes') && md.includes('헤더: 이름 | CPU') && md.includes('화면에 보이는 행: 3'), 'D: 다른 페이지의 테이블 컨테이너');
-  check(md.includes('### E. 네트워크 — /nodes') && md.includes('/api/nodes') && md.includes('node-a') && md.includes('→ 403'), 'E: 네트워크(200 응답 본문 + 403)');
-  check(!md.includes('x1a2b3c') || !/selector: `[^`]*x1a2b3c/.test(md), 'selector에 해시 클래스 없음');
-  const assets = await readOpfs('.pinproof/assets/001/');
-  check(assets === 'A.png,B.png,C.png,D.png,F.png', `스크린샷 파일: ${assets}`);
+  // 1 #help · 2 지운 뒤 다시 담은 총합(번호 재사용) · 3 텍스트 · 4 영역 · 5 테이블 · 6 네트워크 · 7 이미지 · 8 텍스트 붙여넣기
+  check((await readOpfs('.pinproof/items/')) === '001.md,002.md,003.md,004.md,005.md,006.md,007.md,008.md,assets', `항목 하나 = md 하나: ${await readOpfs('.pinproof/items/')}`);
+  const item = async (n) => (await readOpfs(`.pinproof/items/${String(n).padStart(3, '0')}.md`)) ?? '';
+  const md2 = await item(2);
+  fs.writeFileSync(path.join(outDir, '002.md'), md2);
+  check(md2.includes('category: "데이터 정합성"') && md2.includes('status: 대기') && md2.includes('note: "페이지에서 고친 메모"'), '항목 frontmatter: 카테고리·상태·메모');
+  check(md2.includes('# #002 · 데이터 정합성') && md2.includes('## 요소 — /dashboard') && md2.includes('selector: `[data-testid="summary-total"]`') && md2.includes('](assets/002.png)'), '항목 본문: 요소·selector·스크린샷');
+  check(!/^type:/m.test(md2), '항목에는 유형이 없음');
+  check((await item(3)).includes('## 텍스트 — /dashboard') && (await item(3)).includes('선택한 텍스트: "미설치 VM 목록 조회에 실패했습니다"'), '3: 텍스트 exact');
+  check((await item(4)).includes('## 영역 — /dashboard') && /영역 안에 보이던 글자: .*"총 CPU 합계"/.test(await item(4)), '4: 영역 + 안에 보이던 글자');
+  check((await item(5)).includes('## 컨테이너 — /nodes') && (await item(5)).includes('헤더: 이름 | CPU') && (await item(5)).includes('화면에 보이는 행: 3'), '5: 다른 페이지의 테이블 컨테이너');
+  check((await item(6)).includes('## 네트워크 — /nodes') && (await item(6)).includes('node-a') && (await item(6)).includes('→ 403'), '6: 네트워크(200 응답 본문 + 403)');
+  check((await item(7)).includes('## 붙여넣기 — /nodes') && (await item(7)).includes('](assets/007.png)'), '7: 붙여넣은 이미지');
+  check((await item(8)).includes('Error: 403 forbidden'), '8: 붙여넣은 텍스트');
+  check(!/selector: `[^`]*x1a2b3c/.test(md2), 'selector에 해시 클래스 없음');
+  const assets = await readOpfs('.pinproof/items/assets/');
+  check(assets === '001.png,002.png,003.png,004.png,005.png,007.png', `스크린샷 파일: ${assets}`);
   const png = await panel.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
-    const d = await (await (await root.getDirectoryHandle('.pinproof')).getDirectoryHandle('assets')).getDirectoryHandle('001');
-    const f = await (await d.getFileHandle('A.png')).getFile();
+    const d = await (await (await root.getDirectoryHandle('.pinproof')).getDirectoryHandle('items')).getDirectoryHandle('assets');
+    const f = await (await d.getFileHandle('002.png')).getFile();
     const bmp = await createImageBitmap(f);
     return { size: f.size, w: bmp.width, h: bmp.height, b64: btoa(String.fromCharCode(...new Uint8Array(await f.arrayBuffer()))) };
   });
-  fs.writeFileSync(path.join(outDir, 'A.png'), Buffer.from(png.b64, 'base64'));
-  check(png.size > 500 && png.w > 20 && png.h > 20, `스크린샷 A ${png.w}×${png.h}`);
+  fs.writeFileSync(path.join(outDir, '002.png'), Buffer.from(png.b64, 'base64'));
+  check(png.size > 500 && png.w > 20 && png.h > 20, `스크린샷 002 ${png.w}×${png.h}`);
 
   // ---------- 처리 기록 보존 ----------
-  await panel.evaluate(async (name) => {
-    const root = await navigator.storage.getDirectory();
-    const d = await root.getDirectoryHandle('.pinproof');
-    const fh = await d.getFileHandle(name);
-    const text = await (await fh.getFile()).text();
-    const w = await fh.createWritable();
-    await w.write(`${text}\n## 처리 기록\n- 원인: 테스트로 덧붙인 처리 기록\n`);
-    await w.close();
-  }, mdName);
-  await panel.getByPlaceholder(/현상 · 기대/).fill('메모 수정됨');
+  /** 에이전트처럼 항목 파일을 고친다: done 이면 status 를 완료로, append 는 파일 끝에 덧붙임 */
+  const agentEdit = (p, { done = false, append = '' }) =>
+    panel.evaluate(
+      async ({ p, done, append }) => {
+        let dir = await navigator.storage.getDirectory();
+        const parts = p.split('/');
+        const file = parts.pop();
+        for (const part of parts) dir = await dir.getDirectoryHandle(part);
+        const fh = await dir.getFileHandle(file);
+        let text = await (await fh.getFile()).text();
+        if (done) text = text.replace('status: 대기', 'status: 완료');
+        const w = await fh.createWritable();
+        await w.write(text + append);
+        await w.close();
+      },
+      { p, done, append },
+    );
+  await agentEdit('.pinproof/items/002.md', { append: '\n## 처리 기록\n- 원인: 테스트로 덧붙인 처리 기록\n' });
+  const row2 = rows().nth(1);
+  if ((await row2.locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await row2.locator('.ev-head').click();
+  await row2.locator('.ev-note').fill('메모 수정됨');
   await panel.waitForTimeout(1200);
-  const md2 = await readOpfs(`.pinproof/${mdName}`);
-  check(md2.includes('메모 수정됨') && md2.includes('- 원인: 테스트로 덧붙인 처리 기록'), '익스텐션이 다시 써도 처리 기록 보존');
+  check((await item(2)).includes('note: "메모 수정됨"') && (await item(2)).includes('- 원인: 테스트로 덧붙인 처리 기록'), '익스텐션이 다시 써도 처리 기록 보존');
 
-  // 증거 줄은 한 번에 하나만 펼친다: 방금 담은 G 가 열려 있고, A 를 열면 G 는 닫힌다
-  check((await panel.locator('.draft .ev.open').count()) === 1, '증거 줄은 하나만 펼쳐짐(방금 담은 것)');
-  await panel.locator('.draft .ev').first().locator('.ev-head').click();
+  // 항목 줄은 목록 전체에서 하나만 펼친다
+  check((await panel.locator('.cat .ev.open').count()) === 1, '항목 줄은 하나만 펼쳐짐');
+  await rows().first().locator('.ev-head').click();
   await panel.waitForTimeout(200);
-  const openLetters = await panel.locator('.draft .ev.open .letter').allTextContents();
-  check(openLetters.join(',') === 'A', `다른 줄을 열면 열려 있던 줄은 닫힘: ${openLetters.join(',')}`);
+  const openNums = await panel.locator('.cat .ev.open .num').allTextContents();
+  check(openNums.join(',') === '1', `다른 줄을 열면 열려 있던 줄은 닫힘: ${openNums.join(',')}`);
   await panel.setViewportSize({ width: 400, height: 1400 });
-  await panel.screenshot({ path: path.join(outDir, 'panel-draft.png'), fullPage: true });
+  await panel.screenshot({ path: path.join(outDir, 'panel-items.png'), fullPage: true });
   const saveFails = (await panel.evaluate(() => window.__notices)).filter((t) => t.includes('저장 실패'));
   check(saveFails.length === 0, `연달아 담아도 "파일 저장 실패" 경고 없음${saveFails.length ? `: ${saveFails[0]}` : ''}`);
 
-  // ---------- 작성 종료 → 목록 → 보관 ----------
-  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
-  await panel.locator('.rec').first().waitFor();
-  await panel.waitForTimeout(5500); // 목록 주기 갱신으로 처리 기록 표시 반영
-  check(await panel.getByText('처리 기록 있음').isVisible(), '목록에 처리 기록 있음 표시');
+  // ---------- 프롬프트: 카테고리째는 아직 넘기지 않은 항목만, 넘긴 항목엔 넘김 표시 ----------
+  const catCopy = current.locator('.cat-copy');
+  check((await catCopy.textContent()) === '프롬프트 복사 (새 8)', `카테고리 복사 버튼에 새 항목 수: ${await catCopy.textContent()}`);
+  await catCopy.click();
+  await panel.waitForTimeout(600);
+  let clip = await panel.evaluate(() => window.__clip);
+  check(clip.includes('"데이터 정합성" 카테고리의 아래 항목 8건') && clip.includes('`.pinproof/items/001.md`') && clip.includes('`.pinproof/items/008.md`'), '카테고리째 프롬프트: 대기 항목 파일을 하나하나 적음');
+  check(/^sent: \d{4}-/m.test(await item(1)) && (await current.locator('.tag.sent').count()) === 8, '넘긴 항목엔 sent 시각과 "넘김" 표시');
+  check((await catCopy.textContent()) === '프롬프트 다시 복사', '모두 넘기면 "프롬프트 다시 복사"');
+  await tool('요소').click();
+  await app.click('h1');
+  await confirm('새로 담은 것');
+  await app.keyboard.press('Escape');
+  await rows().nth(8).waitFor();
+  check((await catCopy.textContent()) === '프롬프트 복사 (새 1)', '그 뒤에 담은 항목만 새로 셈');
+  await catCopy.click();
+  await panel.waitForTimeout(600);
+  clip = await panel.evaluate(() => window.__clip);
+  check(clip.includes('아래 항목 1건') && clip.includes('items/009.md') && !clip.includes('items/001.md'), `이미 넘긴 항목은 빼고 새 항목만: ${clip.split('\n').filter((l) => l.startsWith('- ')).join(' ')}`);
+  // 항목 하나만
+  if ((await rows().first().locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await rows().first().locator('.ev-head').click();
+  await rows().first().locator('.ev-body').getByRole('button', { name: '프롬프트 복사' }).click();
+  await panel.waitForTimeout(300);
+  clip = await panel.evaluate(() => window.__clip);
+  check(clip.includes('items/001.md') && !clip.includes('items/009.md'), '항목 하나만 프롬프트 복사');
+
+  // ---------- 완료 → 자동 보관 → 되돌리기 ----------
+  await agentEdit('.pinproof/items/003.md', { done: true, append: '\n## 처리 기록\n- 원인: 에이전트가 처리\n' });
+  await panel.waitForTimeout(5800); // 목록 주기 갱신(5초)으로 완료 감지
+  check((await readOpfs('.pinproof/items/003.md')) === null && (await readOpfs('.pinproof/items/archive/003.md'))?.includes('status: 완료'), '에이전트가 status: 완료로 바꾸면 items/archive/ 로 자동 보관');
+  check((await readOpfs('.pinproof/items/archive/assets/')) === '003.png', '자동 보관: 스크린샷도 이동');
+  check((await panel.evaluate(() => window.__notices)).some((t) => t.includes('보관함')), '자동 보관을 알림으로 알려줌');
+  check((await rows().count()) === 8, '보관한 항목은 카테고리 목록에서 빠짐');
+  const archive = panel.locator('.section.archive');
+  await archive.locator('.section-head').click();
+  await archive.locator('.ev').first().locator('.ev-head').click();
+  await panel.screenshot({ path: path.join(outDir, 'panel-archive.png'), fullPage: true });
+  check((await archive.locator('.ev .tag').first().textContent()) === '데이터 정합성', '보관함 줄에 카테고리 표시');
+  await archive.getByRole('button', { name: '되돌리기' }).click();
+  await panel.waitForTimeout(500);
+  check((await item(3)).includes('status: 대기') && (await item(3)).includes('- 원인: 에이전트가 처리') && (await readOpfs('.pinproof/items/archive/003.md')) === null, '되돌리기: 대기로 바꿔 items/ 로(처리 기록은 남김)');
+  await panel.waitForTimeout(5800);
+  check((await readOpfs('.pinproof/items/003.md')) !== null, '되돌린 항목은 다시 자동 보관되지 않음');
+  // 보관함에서 삭제
+  await agentEdit('.pinproof/items/009.md', { done: true });
+  await panel.waitForTimeout(5800);
+  if ((await archive.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await archive.locator('.section-head').click();
+  await archive.locator('.ev').first().locator('.ev-head').click();
+  await archive.getByRole('button', { name: '삭제' }).click();
+  await panel.waitForTimeout(500);
+  check((await readOpfs('.pinproof/items/archive/009.md')) === null && !(await panel.locator('.section.archive').count()), '보관함에서 삭제: md 지움, 비면 보관함 구역도 사라짐');
+
+  // ---------- 카테고리 옮기기 · 여기에 담기 · 이름 바꾸기 · 삭제 ----------
+  await addCategory('버그');
+  check((await current.locator('.cat-name').textContent()) === '버그' && (await current.locator('.ev').count()) === 0, '새 카테고리 "버그"가 담는 곳(비어 있음)');
+  const dataCat = panel.locator('.cat', { has: panel.locator('.cat-name', { hasText: '데이터 정합성' }) });
+  const first = dataCat.locator('.ev').first();
+  if ((await first.locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await first.locator('.ev-head').click();
+  check((await first.locator('.move-to').inputValue()) === '미분류', '옮길 카테고리 기본값은 첫 다른 카테고리');
+  await first.locator('.move-to').selectOption('버그');
+  await first.screenshot({ path: path.join(outDir, 'panel-move-to.png') });
+  await first.locator('.move-go').click();
+  await panel.waitForTimeout(600);
+  check((await item(1)).includes('category: "버그"') && (await current.locator('.ev .num').allTextContents()).join(',') === '1', '카테고리 옮기기: frontmatter 한 줄 + 목록 이동');
+  await dataCat.getByRole('button', { name: '여기에 담기' }).click();
+  await panel.waitForTimeout(300);
+  check((await catPick.inputValue()) === '데이터 정합성', '"여기에 담기"로 담는 곳 바꾸기');
+  await catPick.selectOption('버그');
+  await panel.getByRole('button', { name: '이름 바꾸기' }).click();
+  await panel.getByLabel('바꿀 이름').fill('UI 버그');
+  await panel.getByRole('button', { name: '바꾸기' }).click();
+  await panel.waitForTimeout(600);
+  check((await item(1)).includes('category: "UI 버그"') && JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '이름 바꾸기: 목록과 그 카테고리 항목 모두');
+  await panel.locator('.cat-tools').getByRole('button', { name: '삭제' }).click();
+  await panel.waitForTimeout(300);
+  check(JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '대기 항목이 있는 카테고리는 지우지 않음');
+  await addCategory('빈 카테고리');
+  await panel.locator('.cat-tools').getByRole('button', { name: '삭제' }).click();
+  await panel.waitForTimeout(300);
+  check(!JSON.parse(await readOpfs('.pinproof/categories.json')).includes('빈 카테고리') && (await catPick.inputValue()) === '미분류', '빈 카테고리 삭제 → 담는 곳은 미분류로');
+  await catPick.selectOption('데이터 정합성');
   await panel.screenshot({ path: path.join(outDir, 'panel.png'), fullPage: true });
-  await panel.locator('.rec-actions').getByRole('button', { name: '보관' }).click();
-  await panel.waitForTimeout(500);
-  check((await readOpfs(`.pinproof/archive/${mdName}`)) !== null && (await readOpfs(`.pinproof/${mdName}`)) === null, '보관: archive/로 이동');
-  check((await readOpfs('.pinproof/archive/assets/001/')) === 'A.png,B.png,C.png,D.png,F.png', '보관: 스크린샷도 이동');
-
-  // ---------- 기록 삭제 ----------
-  panel.on('dialog', (d) => d.accept());
-  await panel.getByRole('button', { name: '보관함 보기' }).click();
-  await panel.locator('.rec-actions').getByRole('button', { name: '삭제' }).click();
-  await panel.waitForTimeout(500);
-  check((await readOpfs(`.pinproof/archive/${mdName}`)) === null && (await readOpfs('.pinproof/archive/assets/001/')) === null, '보관함의 기록 삭제: md·스크린샷 삭제');
-  await panel.getByRole('button', { name: '기록 보기' }).click();
-
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('지울 기록');
-  // 증거 2개를 담고 A를 지우면 남은 증거가 A로 다시 매겨진다
-  await tool('요소').click();
-  await app.click('h1');
-  await confirm();
-  await panel.locator('.draft .ev').nth(0).waitFor();
-  await app.click('#node-table');
-  await confirm();
-  await panel.locator('.draft .ev').nth(1).waitFor();
-  await app.keyboard.press('Escape');
-  await panel.locator('.draft .ev').first().locator('.ev-del').click();
-  await panel.waitForTimeout(400);
-  const letters = await panel.locator('.draft .ev .letter').allTextContents();
-  const firstHead = panel.locator('.draft .ev').first().locator('.ev-head');
-  if ((await firstHead.getAttribute('aria-expanded')) !== 'true') await firstHead.click();
-  check(letters.join(',') === 'A' && (await panel.locator('.draft .ev .target-sel').first().textContent()).startsWith('#node-table'), `증거 삭제 후 문자 다시 매기기: ${letters.join(',')}`);
-  await panel.waitForTimeout(1000);
-  const before = await readOpfs('.pinproof/');
-  await panel.locator('.draft-actions').getByRole('button', { name: '삭제' }).click();
-  await panel.waitForTimeout(500);
-  const after = await readOpfs('.pinproof/');
-  check(/지울-기록\.md/.test(before) && !/지울-기록\.md/.test(after), '작성 중인 기록 삭제');
-  check(await panel.getByRole('button', { name: '+ 새 기록' }).isVisible(), '삭제 후 작성 중 상태 해제');
-
-  // 아무것도 쓰지 않고 작성 종료하면 기록이 남지 않는다(새 기록을 만들 때 생긴 md 까지 지움)
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.locator('.draft').waitFor();
-  await panel.waitForTimeout(700);
-  const emptyId = (await panel.locator('.draft-head .mono').textContent()).replace('#', '');
-  const hasEmptyMd = async () => (await readOpfs('.pinproof/')).split(',').some((n) => n.startsWith(`${emptyId}-`));
-  check(await hasEmptyMd(), `새 기록을 만들면 md 가 생김(#${emptyId})`);
-  await panel.locator('.draft-head .draft-fold').click(); // 머리의 접기(▴)도 이슈 접기와 같다
-  await panel.waitForTimeout(700);
-  check(!(await hasEmptyMd()) && (await panel.locator('.records .rec-title', { hasText: '(제목 없음)' }).count()) === 0, '아무것도 쓰지 않고 작성 종료하면 기록이 사라짐');
-
-  // 증거를 다른 기록으로 옮기기: 대상 기록 끝에 다음 문자로 붙고, 원래 기록에서는 빠진다
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('옮길 대상');
-  await tool('요소').click();
-  await app.click('h1');
-  await confirm();
-  await panel.locator('.draft .ev').nth(0).waitFor();
-  await app.keyboard.press('Escape');
-  const targetId = Number((await panel.locator('.draft-head .mono').textContent()).replace('#', ''));
-  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('옮기기 원본');
-  await tool('요소').click();
-  await app.click('#node-table');
-  await confirm();
-  await panel.locator('.draft .ev').nth(0).waitFor();
-  await app.keyboard.press('Escape');
-  await panel.waitForTimeout(1200);
-  const srcRow = panel.locator('.draft .ev').first();
-  if ((await srcRow.locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await srcRow.locator('.ev-head').click();
-  check((await srcRow.locator('.move-to').inputValue()) === 'inbox', '옮길 곳 기본값은 미분류');
-  await srcRow.screenshot({ path: path.join(outDir, 'panel-move-to.png') });
-  await srcRow.locator('.move-to').selectOption(String(targetId));
-  await srcRow.locator('.move-go').click();
-  await panel.waitForTimeout(1000);
-  const targetMdName = (await readOpfs('.pinproof/')).split(',').find((n) => n.startsWith(`${String(targetId).padStart(3, '0')}-`));
-  const targetMd = targetMdName ? await readOpfs(`.pinproof/${targetMdName}`) : '';
-  check((await panel.locator('.draft .ev').count()) === 0, '옮기면 원래 기록에서 빠짐');
-  check(/### B\. .+ — \/nodes/.test(targetMd) && targetMd.includes('evidence: 2'), `대상 기록(#${targetId}) 끝에 B 로 붙음`);
-  // 뒤 검사에 영향이 없게 두 기록을 지운다
-  await panel.locator('.draft-actions').getByRole('button', { name: '삭제' }).click();
-  await panel.waitForTimeout(500);
-  await panel.locator('.records > .rec', { hasText: '옮길 대상' }).getByRole('button', { name: '삭제' }).click();
-  await panel.waitForTimeout(500);
 
   // ---------- 이전 이름(.bugnotes/) → .pinproof/ 옮기기 ----------
   await panel.evaluate(async () => {
@@ -554,7 +578,10 @@ try {
   check(!migrated.workflow.includes('옛 절차'), '옮기기: WORKFLOW.md는 새 버전 유지');
   check(migrated.gitignore.includes('# BugNotes') && !migrated.gitignore.includes('.pinproof/'), '옮기기: 팀 .gitignore 는 그대로');
   check(migrated.exclude.split('\n').filter((l) => l === '.pinproof/').length === 1, '옮기기: exclude 의 .pinproof/ 는 한 줄만');
-  check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 목록에 표시');
+  await panel.locator('.section.records .section-head').click();
+  check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 "이전 기록"(읽기 전용)에 표시');
+  check(!(await panel.locator('.section.records .rec-main').evaluate((e) => e.tagName === 'BUTTON')), '이전 기록은 다시 열 수 없음(복사·보관·삭제만)');
+  await panel.locator('.section.records .section-head').click();
 
   // ---------- 배포 주소(localhost 아님): 사이트별로 켠 곳에서도 동작하고 로컬 폴더에 연결 ----------
   // (E2E 빌드는 <all_urls> 권한이 있어 켜기 버튼의 권한 확인 창 없이 "켜진 사이트"로 취급된다)
@@ -564,46 +591,41 @@ try {
   check(await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).isVisible(), '배포 주소는 따로 폴더를 연결한다(같은 로컬 폴더에 연결 가능)');
   check(await panel.locator('.site-on').isVisible(), '켠 사이트에는 "직접 켠 사이트입니다 · 끄기" 표시');
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
-  await panel.getByRole('button', { name: '+ 새 기록' }).waitFor();
+  await panel.locator('.cat.current').waitFor();
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   check(await app.locator('pinproof-overlay .tb').isVisible(), '배포 주소에도 사이트별 등록으로 툴바가 뜸');
-  await panel.getByRole('button', { name: '+ 새 기록' }).click();
-  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('배포 환경 확인');
+  check((await rows().count()) === 0, '배포 주소 탭에는 localhost 에서 담은 항목이 목록에 없음');
   await tool('요소').click();
   await app.click('[data-testid="summary-total"]');
   await confirm('배포에서 본 값');
-  await panel.locator('.draft .ev').first().waitFor({ timeout: 5000 });
+  await rows().first().waitFor({ timeout: 5000 });
   await app.keyboard.press('Escape');
   await app.goto(`${DEPLOY}/nodes`);
   await app.locator('#node-table').waitFor();
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   await app.waitForTimeout(500);
   await tool('네트워크').click();
-  await panel.locator('.draft .ev').nth(1).waitFor({ timeout: 5000 }).catch(() => {});
-  check((await panel.locator('.draft .ev.network').count()) === 1, '배포 주소에서도 네트워크 기록(MAIN world 스크립트) 동작');
-  const deployId = (await panel.locator('.draft-head .mono').textContent()).replace('#', '');
+  await rows().nth(1).waitFor({ timeout: 5000 }).catch(() => {});
+  check((await current.locator('.ev.network').count()) === 1, '배포 주소에서도 네트워크 기록(MAIN world 스크립트) 동작');
+  const deployNum = Number(await rows().first().locator('.num').textContent());
+  check(deployNum > 77, `옛 기록(#077)이 있으면 다음 번호는 그 뒤부터: #${deployNum}`);
   await panel.waitForTimeout(1200);
-  const deployMdName = (await readOpfs('.pinproof/')).split(',').find((n) => n.startsWith(`${deployId}-`));
-  const deployMd = deployMdName ? await readOpfs(`.pinproof/${deployMdName}`) : '';
-  check(deployMd.includes(`app: ${DEPLOY}`) && deployMd.includes('env: deployed'), `배포 주소에서 담은 기록에 env: deployed (${deployMdName})`);
-  await panel.locator('.draft-actions').getByRole('button', { name: '이슈 접기' }).click();
-  await panel.waitForTimeout(600);
-  check(await panel.locator('.records .rec-title', { hasText: '배포 환경 확인' }).first().isVisible(), '배포 주소 탭의 목록에는 그 주소에서 만든 기록이 보임');
+  const deployMd = await item(deployNum);
+  check(deployMd.includes(`app: ${DEPLOY}`) && deployMd.includes('env: deployed'), `배포 주소에서 담은 항목에 env: deployed (#${deployNum})`);
 
-  // 기록 목록은 지금 주소 기준: localhost 탭에서는 배포 주소 기록을 접어 두고, 펼치면 주소와 함께(열기는 막힘)
+  // 목록은 지금 주소 기준: localhost 탭에서는 배포 주소 항목을 "다른 주소 항목"으로 접어 두고, 펼쳐도 읽기 전용
   await app.goto(`${BASE}/dashboard`);
   await panel.waitForTimeout(800);
-  const deployRow = panel.locator('.records > .rec', { hasText: '배포 환경 확인' });
-  check((await deployRow.count()) === 0, 'localhost 탭의 기본 목록에는 배포 주소 기록이 없음');
-  check(await panel.locator('.records .rec-title', { hasText: '옛 기록' }).isVisible(), '주소가 없는 옛 기록은 그대로 보임');
-  const othersToggle = panel.locator('.others-toggle');
-  check((await othersToggle.textContent()) === '다른 주소 기록 1건 보기', `다른 주소 기록은 접어 둠: ${await othersToggle.textContent()}`);
-  await othersToggle.click();
-  const otherRow = panel.locator('.others .rec.other', { hasText: '배포 환경 확인' });
-  check((await otherRow.count()) === 1 && (await otherRow.locator('.rec-meta').textContent()).includes('deploy.test:5199'), '펼치면 다른 주소 기록이 주소와 함께 보임');
-  check(await otherRow.locator('.rec-main').isDisabled(), '다른 주소 기록은 다시 열기가 막힘(복사·보관·삭제만)');
+  check((await panel.locator('.cat .ev', { hasText: '배포에서 본 값' }).count()) === 0, 'localhost 탭의 카테고리 목록에는 배포 주소 항목이 없음');
+  const others = panel.locator('.section.others-items');
+  check((await others.locator('.section-head').textContent()).includes('다른 주소 항목') && (await others.locator('.section-head .count').textContent()) === '2', '다른 주소 항목은 접어 두고 개수만');
+  await others.locator('.section-head').click();
+  check((await others.locator('.ev.network .num.outline').count()) === 1, '편집용 원본이 없는 항목도 파일의 종류(kind: 네트워크)로 테두리 번호');
+  const otherRow = others.locator('.ev', { hasText: '배포에서 본 값' });
+  await otherRow.locator('.ev-head').click();
+  check((await otherRow.locator('.ev-body').textContent()).includes('deploy.test:5199') && !(await otherRow.locator('.ev-note').count()) && !(await otherRow.locator('.ev-del').count()), '펼치면 만든 주소 안내, 메모 칸·삭제 없음(읽기 전용)');
   await panel.screenshot({ path: path.join(outDir, 'panel-others.png'), fullPage: true });
-  await othersToggle.click();
+  await others.locator('.section-head').click();
 
   // ---------- 다크 모드: 기본은 시스템 설정, 패널 버튼으로 시스템 → 라이트 → 다크 ----------
   const panelBg = () => panel.evaluate(() => getComputedStyle(document.body).backgroundColor);
