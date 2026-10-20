@@ -65,7 +65,7 @@ kbd {
 }
 /* 팝오버 대상 */
 .sel { position: fixed; border: 2px solid var(--navy); border-radius: 3px; background: var(--sky-soft); pointer-events: none; }
-/* 마커가 없는 요소 찾기([페이지로 이동]) */
+/* 마커가 없는 요소 찾기([해당 페이지로 이동]) */
 .pulse { position: fixed; border: 2px solid var(--navy); border-radius: 3px; pointer-events: none; animation: pp-pulse-box 1.1s ease-out forwards; }
 @keyframes pp-pulse-box {
   0% { box-shadow: 0 0 0 0 rgba(30,58,138,.5); background: var(--sky-soft); }

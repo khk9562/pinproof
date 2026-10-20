@@ -574,6 +574,52 @@ export function usePinProof() {
     [origin],
   );
 
+  /**
+   * 증거를 작성 중 기록·미분류가 아닌 다른 기록(#id)으로 옮긴다. 대상 기록 끝에 다음 문자로 붙이고 md·스크린샷을 다시 쓴다.
+   * 대상에 먼저 쓴 뒤 원래 자리에서 빼서, 중간에 실패해도 증거가 사라지지 않게 한다.
+   */
+  const moveToRecord = useCallback(
+    async (uid: string, targetId: number) => {
+      if (!origin) return;
+      const h = handleRef.current;
+      if (!h || !(await ensurePermission(h, false))) {
+        say('먼저 프로젝트 폴더를 연결해주세요.', 'warn');
+        return;
+      }
+      const d = draftRef.current;
+      const fromDraft = d?.evidence.find((e) => e.uid === uid);
+      const ev = fromDraft ?? inbox.find((e) => e.uid === uid);
+      if (!ev) return;
+      const target = await db.getRecordModel(origin, targetId);
+      if (!target) {
+        say('이 브라우저에서 만든 기록으로만 옮길 수 있습니다.', 'warn');
+        return;
+      }
+      const existing = target.evidence.find((e) => sameTarget(e, ev));
+      if (existing) {
+        say(`#${padId(targetId)} 에 이미 ${existing.letter}(으)로 담긴 요소입니다.`, 'warn');
+        return;
+      }
+      const letter = nextLetter(target.evidence);
+      const updated: BugRecord = { ...target, evidence: [...target.evidence, { ...ev, letter }] };
+      try {
+        await db.setRecordModel(origin, updated);
+        await writeRecord(h, { ...updated, updated: nowStamp() });
+      } catch (e) {
+        say(`옮기기 실패: ${String(e)}`, 'warn');
+        return;
+      }
+      if (fromDraft && d) saveDraft({ ...d, evidence: relabel(d.evidence.filter((e) => e.uid !== uid)) }, true);
+      else {
+        await db.removeInbox(uid);
+        setInbox(await db.listInbox(origin));
+      }
+      refreshRecords();
+      say(`#${padId(targetId)} 에 ${letter}(으)로 옮겼습니다.`);
+    },
+    [origin, inbox, saveDraft, refreshRecords, say],
+  );
+
   const setInboxNote = useCallback(
     async (uid: string, note: string) => {
       if (!origin) return;
@@ -731,6 +777,7 @@ export function usePinProof() {
     inboxToDraft,
     removeInbox,
     setInboxNote,
+    moveToRecord,
     addPasted,
     goTo,
     locate,

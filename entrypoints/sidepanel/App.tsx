@@ -273,8 +273,8 @@ function DraftCard({ bn }: { bn: PinProof }) {
             onNote={(note) => bn.updateEvidence(e.uid, { note })}
             onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}
-            onMove={() => bn.evidenceToInbox(e.uid)}
-            moveLabel="미분류로"
+            moves={[{ value: 'inbox', label: '미분류' }, ...recordMoves(bn)]}
+            onMoveTo={(to) => moveEvidence(bn, e.uid, to)}
             onDelete={() => bn.removeEvidence(e.uid)}
           />
         ))}
@@ -323,6 +323,22 @@ function PasteZone({ bn }: { bn: PinProof }) {
       여기를 클릭하고 <kbd>⌘V</kbd> 로 스크린샷·텍스트 붙여넣기 · 이미지 끌어다 놓기
     </div>
   );
+}
+
+type MoveOption = { value: string; label: string };
+
+/** 증거를 옮길 수 있는 기록: 지금 주소에서 만든(또는 주소 없는 옛) 보관 안 한 기록 중 작성 중인 것 말고 */
+function recordMoves(bn: PinProof): MoveOption[] {
+  return bn.records
+    .filter((r) => !r.archived && (!r.app || r.app === bn.origin) && r.id !== bn.draft?.id)
+    .map((r) => ({ value: String(r.id), label: `#${padId(r.id)} ${r.title || '(제목 없음)'}` }));
+}
+
+/** 옮길 곳: inbox(미분류) · draft(작성 중 기록) · 기록 번호 */
+function moveEvidence(bn: PinProof, uid: string, to: string) {
+  if (to === 'inbox') bn.evidenceToInbox(uid);
+  else if (to === 'draft') bn.inboxToDraft(uid);
+  else bn.moveToRecord(uid, Number(to));
 }
 
 function evidenceSummary(e: Evidence): string {
@@ -442,16 +458,21 @@ function EvidenceRow(props: {
   onNote: (note: string) => void;
   onLocate: () => void;
   onGo: () => void;
-  onMove: () => void;
-  moveLabel: string;
+  /** 옮길 수 있는 곳(첫 항목이 기본값: 작성 중 기록의 증거는 미분류, 미분류 증거는 작성 중 기록) */
+  moves: MoveOption[];
+  onMoveTo: (to: string) => void;
   onDelete: () => void;
 }) {
   const { ev } = props;
+  /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
   /** 사용자가 직접 펼치거나 접은 상태. 정하지 않았으면 방금 담은 줄만 펼친다 */
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? props.fresh;
   const setOpen = setUserOpen;
   const [shot, setShot] = useState(false);
+  /** 고른 옮길 곳. 목록이 바뀌어 없어졌으면 첫 항목(기본값)으로 */
+  const [picked, setMoveTo] = useState<string | null>(null);
+  const moveTo = picked && props.moves.some((m) => m.value === picked) ? picked : (props.moves[0]?.value ?? '');
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (props.fresh) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -500,8 +521,28 @@ function EvidenceRow(props: {
           )}
           <input className="ev-note" value={ev.note} placeholder="한 줄 메모 (선택)" onChange={(e) => props.onNote(e.target.value)} />
           <div className="ev-actions">
-            {ev.selector && <button onClick={props.onGo}>페이지로 이동</button>}
-            <button onClick={props.onMove}>{props.moveLabel}</button>
+            {ev.selector && (
+              <button className="go-page" onClick={props.onGo} title="이 증거를 담은 화면으로 가서 그 요소를 찾아 반짝입니다">
+                해당 페이지로 이동
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4.5 2.5h5v5M9.5 2.5L3 9" />
+                </svg>
+              </button>
+            )}
+            {props.moves.length > 0 && (
+              <span className="move">
+                <select className="move-to" value={moveTo} aria-label="옮길 곳" onChange={(e) => setMoveTo(e.target.value)}>
+                  {props.moves.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="move-go" onClick={() => props.onMoveTo(moveTo)}>
+                  이동
+                </button>
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -526,8 +567,8 @@ function InboxSection({ bn }: { bn: PinProof }) {
             onNote={(note) => bn.setInboxNote(e.uid, note)}
             onLocate={() => bn.locate(e)}
             onGo={() => bn.goTo(e)}
-            onMove={() => bn.inboxToDraft(e.uid)}
-            moveLabel="작성 중인 기록에 넣기"
+            moves={[...(bn.draft ? [{ value: 'draft', label: `작성 중 기록 #${padId(bn.draft.id)}` }] : []), ...recordMoves(bn)]}
+            onMoveTo={(to) => moveEvidence(bn, e.uid, to)}
             onDelete={() => bn.removeInbox(e.uid)}
           />
         ))}

@@ -477,6 +477,41 @@ try {
   await panel.waitForTimeout(700);
   check(!(await hasEmptyMd()) && (await panel.locator('.records .rec-title', { hasText: '(제목 없음)' }).count()) === 0, '아무것도 쓰지 않고 작성 종료하면 기록이 사라짐');
 
+  // 증거를 다른 기록으로 옮기기: 대상 기록 끝에 다음 문자로 붙고, 원래 기록에서는 빠진다
+  await panel.getByRole('button', { name: '+ 새 기록' }).click();
+  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('옮길 대상');
+  await tool('요소').click();
+  await app.click('h1');
+  await confirm();
+  await panel.locator('.draft .ev').nth(0).waitFor();
+  await app.keyboard.press('Escape');
+  const targetId = Number((await panel.locator('.draft-head .mono').textContent()).replace('#', ''));
+  await panel.getByRole('button', { name: '작성 종료' }).click();
+  await panel.getByRole('button', { name: '+ 새 기록' }).click();
+  await panel.getByPlaceholder('예: 대시보드 총합 불일치').fill('옮기기 원본');
+  await tool('요소').click();
+  await app.click('#node-table');
+  await confirm();
+  await panel.locator('.draft .ev').nth(0).waitFor();
+  await app.keyboard.press('Escape');
+  await panel.waitForTimeout(1200);
+  const srcRow = panel.locator('.draft .ev').first();
+  if ((await srcRow.locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await srcRow.locator('.ev-head').click();
+  check((await srcRow.locator('.move-to').inputValue()) === 'inbox', '옮길 곳 기본값은 미분류');
+  await srcRow.screenshot({ path: path.join(outDir, 'panel-move-to.png') });
+  await srcRow.locator('.move-to').selectOption(String(targetId));
+  await srcRow.locator('.move-go').click();
+  await panel.waitForTimeout(1000);
+  const targetMdName = (await readOpfs('.pinproof/')).split(',').find((n) => n.startsWith(`${String(targetId).padStart(3, '0')}-`));
+  const targetMd = targetMdName ? await readOpfs(`.pinproof/${targetMdName}`) : '';
+  check((await panel.locator('.draft .ev').count()) === 0, '옮기면 원래 기록에서 빠짐');
+  check(/### B\. .+ — \/nodes/.test(targetMd) && targetMd.includes('evidence: 2'), `대상 기록(#${targetId}) 끝에 B 로 붙음`);
+  // 뒤 검사에 영향이 없게 두 기록을 지운다
+  await panel.getByRole('button', { name: '기록 삭제' }).click();
+  await panel.waitForTimeout(500);
+  await panel.locator('.records > .rec', { hasText: '옮길 대상' }).getByRole('button', { name: '삭제' }).click();
+  await panel.waitForTimeout(500);
+
   // ---------- 이전 이름(.bugnotes/) → .pinproof/ 옮기기 ----------
   await panel.evaluate(async () => {
     const root = await navigator.storage.getDirectory();

@@ -767,7 +767,7 @@ class Picker {
     return { url: location.href, route, viewportWidth: innerWidth, entries };
   }
 
-  // ---------- 강조 (패널 목록 클릭·[페이지로 이동]) ----------
+  // ---------- 강조 (패널 목록 클릭·[해당 페이지로 이동]) ----------
   private pulse(r: Box) {
     const el = document.createElement('div');
     el.className = 'pulse';
