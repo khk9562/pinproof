@@ -630,16 +630,16 @@ try {
   // ---------- 다크 모드: 기본은 시스템 설정, 패널 버튼으로 시스템 → 라이트 → 다크 ----------
   const panelBg = () => panel.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await panel.emulateMedia({ colorScheme: 'dark' });
-  check((await panelBg()) === 'rgb(8, 20, 48)', `시스템이 다크면 설정 없이도 패널 다크: ${await panelBg()}`);
+  check((await panelBg()) === 'rgb(12, 12, 13)', `시스템이 다크면 설정 없이도 패널 다크: ${await panelBg()}`);
   await panel.emulateMedia({ colorScheme: 'light' });
-  check((await panelBg()) === 'rgb(255, 255, 255)', '시스템이 라이트면 패널 라이트');
+  check((await panelBg()) === 'rgb(247, 247, 245)', '시스템이 라이트면 패널 라이트');
   await app.goto(`${BASE}/dashboard`);
   await app.locator('pinproof-overlay .tb').waitFor({ timeout: 5000 });
   const themeBtn = panel.locator('.theme-btn').first();
   await themeBtn.click(); // 시스템 → 라이트
   await themeBtn.click(); // 라이트 → 다크
   await app.waitForTimeout(300);
-  check((await panel.evaluate(() => document.documentElement.dataset.theme)) === 'dark' && (await panelBg()) === 'rgb(8, 20, 48)', '버튼으로 다크를 고르면 패널 다크(시스템이 라이트여도)');
+  check((await panel.evaluate(() => document.documentElement.dataset.theme)) === 'dark' && (await panelBg()) === 'rgb(12, 12, 13)', '버튼으로 다크를 고르면 패널 다크(시스템이 라이트여도)');
   check((await app.locator('pinproof-overlay').getAttribute('data-theme')) === 'dark', '페이지 위 툴바·마커도 같은 테마');
   await app.waitForTimeout(500);
   await app.screenshot({ path: path.join(outDir, 'page-dark.png') });

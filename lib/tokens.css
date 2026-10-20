@@ -1,0 +1,67 @@
+/*
+ * 무채색 디자인 토큰 (heureum/design-system/DESIGN.md).
+ * 화면은 잉크(ink)와 종이(paper) 두 색의 농도로만 그린다. 색은 아래 세 축 변수에서만 파생되고, 컴포넌트는 hex 를 쓰지 않는다.
+ * 사이드 패널·연결 탭은 :root, 페이지 위 오버레이(Shadow DOM)는 :host 가 받는다.
+ * 테마: 기본은 시스템 설정을 따르고([data-theme] 없음), 사용자가 고르면 data-theme 가 이긴다(lib/theme.ts).
+ */
+:root, :host {
+  --paper-rgb: 12 12 13;
+  --surface-rgb: 24 24 25;
+  --ink-rgb: 240 239 235;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]), :host(:not([data-theme="dark"])) {
+    --paper-rgb: 247 247 245;
+    --surface-rgb: 252 252 251;
+    --ink-rgb: 17 17 18;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"], :host([data-theme="light"]) {
+  --paper-rgb: 247 247 245;
+  --surface-rgb: 252 252 251;
+  --ink-rgb: 17 17 18;
+  color-scheme: light;
+}
+
+:root, :host {
+  --color-bg: rgb(var(--paper-rgb));
+  --color-surface: rgb(var(--surface-rgb));
+  --color-ink: rgb(var(--ink-rgb));
+  --color-ink-soft: rgb(var(--ink-rgb) / 0.66);
+  --color-ink-faint: rgb(var(--ink-rgb) / 0.44);
+  --color-line: rgb(var(--ink-rgb) / 0.18);
+  --color-line-strong: rgb(var(--ink-rgb) / 0.62);
+  --color-wash: rgb(var(--ink-rgb) / 0.07);
+  --color-wash-strong: rgb(var(--ink-rgb) / 0.13);
+  --color-inverse: rgb(var(--paper-rgb));
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.72, 0, 0.18, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --dur-tap: 140ms;
+  --dur-quick: 260ms;
+  --dur-move: 520ms;
+  --dur-stage: 880ms;
+
+  --text-label: 10.5px;
+  --text-small: 12.5px;
+  --text-body: 13px; /* DESIGN 은 15px. 사이드 패널 폭(약 360px)에서 한 줄 목록이 잘리지 않게 줄임 */
+  --text-title: 22px;
+  --tracking-label: 0.16em;
+
+  --radius-paper: 3px;
+  --radius-input: 8px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+
+  --shadow-float: 0 30px 70px -30px rgb(0 0 0 / 0.6);
+  /* 호스트 페이지 바탕을 모르는 곳(하이라이트·마커)에 쓰는 바깥 링 */
+  --ring-paper: 0 0 0 1px rgb(var(--paper-rgb));
+
+  --font-sans: 'Paperlogy', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+::selection { background: rgb(var(--ink-rgb) / 0.22); }

@@ -4,18 +4,30 @@
     <meta charset="UTF-8" />
     <title>PinProof · 폴더 연결</title>
     <style>
-      body { font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; max-width: 520px; margin: 64px auto; padding: 0 16px; color: #172033; background: #ffffff; }
-      button { padding: 8px 16px; border-radius: 6px; border: 0; background: #1e3a8a; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-      code { font-family: ui-monospace, Menlo, monospace; }
-      #status { margin-top: 16px; color: #4b5b73; }
-      @media (prefers-color-scheme: dark) { body { background: #081430; color: #eef5ff; } button { background: #2f7bff; } #status { color: #a9c0e4; } }
+      /* 색·글자 토큰은 lib/tokens.css(main.ts 에서 불러옴) */
+      * { box-sizing: border-box; }
+      body {
+        max-width: 520px; margin: 64px auto; padding: 0 16px; background: var(--color-bg); color: var(--color-ink);
+        font: 400 var(--text-body)/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      }
+      h2 { font-size: var(--text-title); font-weight: 800; margin: 0 0 12px; }
+      button {
+        height: 44px; padding: 0 20px; border: 0; border-radius: var(--radius-pill); background: var(--color-ink); color: var(--color-inverse);
+        font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity var(--dur-tap) var(--ease-out), transform var(--dur-tap) var(--ease-out);
+      }
+      button:hover { opacity: 0.88; }
+      button:active { transform: scale(0.97); }
+      button:focus { outline: none; }
+      button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 3px; }
+      code { font-family: var(--font-mono); }
+      #status { margin-top: 16px; color: var(--color-ink-soft); font-size: var(--text-small); }
     </style>
   </head>
   <body>
     <h2>프로젝트 폴더 연결</h2>
     <p><code id="origin"></code> 앱의 기록을 저장할 프로젝트 폴더를 고르세요.</p>
     <button id="pick">폴더 선택</button>
-    <p id="status"></p>
+    <p id="status" role="status"></p>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

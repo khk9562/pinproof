@@ -601,9 +601,15 @@ class Picker {
     ctx.drawImage(img, x0 * scale, y0 * scale, sw, sh, 0, 0, canvas.width, canvas.height);
     if (highlight) {
       const k = scale * out;
-      ctx.strokeStyle = '#1e3a8a';
-      ctx.lineWidth = Math.max(2, 2 * k);
-      ctx.strokeRect((rect.left - x0) * k, (rect.top - y0) * k, rect.width * k, rect.height * k);
+      // 무채색 두 겹: 바깥 흰 선 위에 검은 선. 밝은·어두운 화면 어디서나 보인다
+      const w = Math.max(2, 2 * k);
+      const r = [(rect.left - x0) * k, (rect.top - y0) * k, rect.width * k, rect.height * k] as const;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = w + 2 * Math.max(1, k);
+      ctx.strokeRect(...r);
+      ctx.strokeStyle = '#111112';
+      ctx.lineWidth = w;
+      ctx.strokeRect(...r);
     }
     return blobToDataUrl(await canvas.convertToBlob({ type: 'image/png' }));
   }

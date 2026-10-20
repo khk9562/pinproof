@@ -1,15 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0.8 -10.5 137.8 137.8">
   <!-- 16px 전용: 바늘을 짧게, 실루엣을 굵게 -->
-  <defs>
-    <linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="78">
-      <stop offset="0" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#1e3a8a"/>
-    </linearGradient>
-  </defs>
   <g transform="translate(64 64) rotate(45) translate(-64 -64)">
     <path d="M64 70V108" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
-    <path d="M64 70V108" stroke="#0b1b3f" stroke-width="13" stroke-linecap="round"/>
+    <path d="M64 70V108" stroke="#111112" stroke-width="13" stroke-linecap="round"/>
     <path d="M43 4H85A13 13 0 0 1 85 30H82L78 52H95A13 13 0 0 1 95 78H33A13 13 0 0 1 33 52H50L46 30H43A13 13 0 0 1 43 4Z"
-          fill="url(#pp-grad)" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+          fill="#111112" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
   </g>
 </svg>

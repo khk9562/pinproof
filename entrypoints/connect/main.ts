@@ -1,9 +1,14 @@
+import '@/lib/tokens.css';
 import { connectFolder } from '@/lib/connect';
+import { applyTheme, loadTheme } from '@/lib/theme';
+import { registerFonts } from '@/lib/fonts';
 
 /** 사이드 패널에서 폴더 선택 창이 막히는 환경을 위한 대체 페이지(같은 익스텐션 origin이라 IndexedDB 공유) */
 const origin = new URLSearchParams(location.search).get('origin') ?? '';
 document.getElementById('origin')!.textContent = origin;
 const status = document.getElementById('status')!;
+registerFonts();
+loadTheme().then((p) => applyTheme(document.documentElement, p));
 
 document.getElementById('pick')!.addEventListener('click', async () => {
   try {

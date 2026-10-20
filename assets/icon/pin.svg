@@ -1,15 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="2.5 1.9 123.6 123.6">
-  <!-- 메모 고정 압정: 머리·몸통·받침을 한 실루엣으로, 머리(하늘색) → 받침(남색) 은은한 그라데이션. 흰 테두리로 어두운 툴바에서도 윤곽이 보이게 -->
-  <defs>
-    <linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="74">
-      <stop offset="0" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#1e3a8a"/>
-    </linearGradient>
-  </defs>
+  <!-- 메모 고정 압정: 머리·몸통·받침을 한 실루엣으로, 잉크 단색(#111112, 무채색 토큰의 라이트 ink). 흰 테두리로 어두운 툴바에서도 윤곽이 보이게 -->
   <g transform="translate(64 64) rotate(45) scale(.9) translate(-64 -64)">
     <path d="M64 70V121" stroke="#ffffff" stroke-width="15" stroke-linecap="round"/>
-    <path d="M64 70V121" stroke="#0b1b3f" stroke-width="7" stroke-linecap="round"/>
+    <path d="M64 70V121" stroke="#111112" stroke-width="7" stroke-linecap="round"/>
     <path d="M46 6H82A10 10 0 0 1 82 26H80L77 54H92A10 10 0 0 1 92 74H36A10 10 0 0 1 36 54H51L48 26H46A10 10 0 0 1 46 6Z"
-          fill="url(#pp-grad)" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+          fill="#111112" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
   </g>
 </svg>

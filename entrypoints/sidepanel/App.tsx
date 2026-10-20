@@ -69,7 +69,11 @@ export function App() {
           <OldRecords bn={bn} />
         </>
       )}
-      {bn.notice && <div className={`notice ${bn.notice.kind}`}>{bn.notice.text}</div>}
+      {bn.notice && (
+        <div className={`notice ${bn.notice.kind}`} role={bn.notice.kind === 'warn' ? 'alert' : 'status'}>
+          {bn.notice.text}
+        </div>
+      )}
       <PanelPaste bn={bn} />
     </div>
   );
@@ -91,19 +95,13 @@ function PanelPaste({ bn }: { bn: PinProof }) {
   return null;
 }
 
-/** 익스텐션 아이콘과 같은 압정(assets/icon/pin.svg). 머리(하늘색) → 받침(남색) 그라데이션 */
+/** 익스텐션 아이콘과 같은 압정(assets/icon/pin.svg). 잉크 단색(currentColor), 바탕색 테두리로 바늘과 몸통을 가른다 */
 function PinLogo({ size = 18 }: { size?: number }) {
   return (
     <svg className="pin-logo" viewBox="2.5 1.9 123.6 123.6" width={size} height={size} aria-hidden="true">
-      <defs>
-        <linearGradient id="pp-grad" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="74">
-          <stop offset="0" stopColor="#38bdf8" />
-          <stop offset="1" style={{ stopColor: 'var(--pin-bottom)' }} />
-        </linearGradient>
-      </defs>
       <g transform="translate(64 64) rotate(45) scale(.9) translate(-64 -64)">
         <path className="pp-needle" d="M64 70V121" />
-        <path className="pp-body" fill="url(#pp-grad)" d="M46 6H82A10 10 0 0 1 82 26H80L77 54H92A10 10 0 0 1 92 74H36A10 10 0 0 1 36 54H51L48 26H46A10 10 0 0 1 46 6Z" />
+        <path className="pp-body" fill="currentColor" d="M46 6H82A10 10 0 0 1 82 26H80L77 54H92A10 10 0 0 1 92 74H36A10 10 0 0 1 36 54H51L48 26H46A10 10 0 0 1 46 6Z" />
       </g>
     </svg>
   );
