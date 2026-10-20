@@ -419,12 +419,15 @@ export function usePinProof() {
     [persistItem, refreshRecords, say],
   );
 
-  /** 항목 삭제(md·스크린샷·편집용 원본). 보관함에서는 확인을 받는다 */
+  /**
+   * 항목 삭제(md·스크린샷·편집용 원본). 패널에서 지울 때는(대기·보관함 모두) 한 번 확인을 받는다.
+   * 페이지 위 편집 팝오버의 삭제는 확인 창이 패널 쪽에 떠서 흐름이 끊기므로 묻지 않는다(ask = false).
+   */
   const removeItem = useCallback(
-    async (id: number, archived: boolean) => {
+    async (id: number, archived: boolean, ask = true) => {
       const h = handleRef.current;
       if (!h || !origin) return;
-      if (archived && !window.confirm(`보관한 항목 #${padId(id)} 를 삭제할까요?\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return;
+      if (ask && !window.confirm(`${archived ? '보관한 항목' : '항목'} #${padId(id)} 를 삭제할까요?\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return;
       window.clearTimeout(noteTimers.current.get(id));
       try {
         await deleteItem(h, id, archived);
@@ -545,20 +548,44 @@ export function usePinProof() {
     [categories, persistItem, setCategory, refreshRecords, say],
   );
 
-  /** 대기 항목이 없는 카테고리만 지운다(보관한 항목은 카테고리 이름을 그대로 가짐) */
+  /**
+   * 카테고리 삭제. 빈 카테고리는 묻지 않고 지운다.
+   * 대기 항목이 있으면(다른 주소에서 담은 것 포함) 한 번 묻고, 확인하면 그 항목(md·스크린샷·편집용 원본)까지 지운다.
+   * 보관함 항목은 지우지 않는다(카테고리 이름을 그대로 가짐).
+   */
   const deleteCategory = useCallback(
     async (name: string) => {
       const h = handleRef.current;
-      if (!h || name === DEFAULT_CATEGORY) return;
-      if (summaries.some((s) => !s.archived && s.category === name)) {
-        say(`"${name}"에 대기 항목이 있어 지울 수 없습니다. 항목을 옮기거나 지운 뒤 다시 해주세요.`, 'warn');
+      if (!h || !origin || name === DEFAULT_CATEGORY) return;
+      const pending = summaries.filter((s) => !s.archived && s.category === name);
+      if (
+        pending.length &&
+        !window.confirm(
+          `"${name}" 카테고리와 대기 항목 ${pending.length}개를 삭제할까요?\n\n항목의 md 파일과 스크린샷이 지워지며 되돌릴 수 없습니다. 보관함 항목은 그대로 남습니다.`,
+        )
+      )
         return;
+      try {
+        for (const s of pending) {
+          window.clearTimeout(noteTimers.current.get(s.id));
+          await deleteItem(h, s.id, false);
+          await db.deleteItemModel(s.app ?? origin, s.id);
+        }
+        if (pending.length) {
+          setModels((m) => {
+            const n = new Map(m);
+            for (const s of pending) n.delete(s.id);
+            return n;
+          });
+        }
+        await writeCategories(h, categories.filter((c) => c !== name));
+        if (categoryRef.current === name) setCategory(DEFAULT_CATEGORY);
+      } catch (e) {
+        say(String(e), 'warn');
       }
-      await writeCategories(h, categories.filter((c) => c !== name));
-      if (categoryRef.current === name) setCategory(DEFAULT_CATEGORY);
       await refreshRecords();
     },
-    [categories, summaries, setCategory, refreshRecords, say],
+    [origin, categories, summaries, setCategory, refreshRecords, say],
   );
 
   /** 페이지 위 편집 팝오버에서 고친 내용 반영 */
@@ -567,7 +594,7 @@ export function usePinProof() {
       const item = [...modelsRef.current.values()].find((i) => i.evidence.uid === uid);
       if (!item) return;
       if (edit.action === 'note') updateNote(item.id, edit.note);
-      else removeItem(item.id, false);
+      else removeItem(item.id, false, false);
     },
     [updateNote, removeItem],
   );

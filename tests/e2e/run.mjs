@@ -191,7 +191,13 @@ try {
       window.__clip = t;
     };
   });
-  panel.on('dialog', (d) => d.accept());
+  // 확인 창은 기본으로 수락. dialogAnswer = false 로 한 번 취소해 볼 수 있다
+  const dialogs = [];
+  let dialogAnswer = true;
+  panel.on('dialog', (d) => {
+    dialogs.push(d.message());
+    return dialogAnswer ? d.accept() : d.dismiss();
+  });
   // 담을 곳: 직접 만든 드롭다운(줄마다 고르기 · 연필 · 휴지통, 맨 아래 새 카테고리)
   const catTrigger = panel.locator('.cat-trigger');
   const catMenu = panel.locator('.cat-menu');
@@ -286,8 +292,10 @@ try {
   // ✕ 로 삭제 → 다시 담기
   await app.keyboard.press('Escape');
   check(!(await ov((h) => h.shadowRoot.querySelector('.tb').classList.contains('mode'))), 'Esc 로 모드 종료 → 툴바 원래대로');
+  dialogs.length = 0;
   await fresh.locator('.ev-del').click();
   await panel.waitForTimeout(400);
+  check(dialogs.length === 1 && dialogs[0].startsWith('항목 #002 를 삭제할까요?'), '✕ 로 대기 항목을 지울 때 한 번 확인');
   check((await rows().count()) === 1 && (await readOpfs('.pinproof/items/002.md')) === null, '✕ 로 항목 삭제(md 도 지움)');
   check((await pins()).join(',') === '1', '삭제하면 페이지 마커도 사라짐');
   await tool('요소').click();
@@ -558,14 +566,39 @@ try {
   await panel.waitForTimeout(600);
   check((await item(1)).includes('category: "UI 버그"') && JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '이름 바꾸기: 목록과 그 카테고리 항목 모두');
   await openCatMenu();
+  dialogs.length = 0;
+  dialogAnswer = false;
   await catMenu.getByRole('button', { name: '"UI 버그" 삭제' }).click();
   await panel.waitForTimeout(300);
-  check(JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그'), '대기 항목이 있는 카테고리는 지우지 않음');
+  dialogAnswer = true;
+  check(
+    dialogs.length === 1 && dialogs[0].startsWith('"UI 버그" 카테고리와 대기 항목 1개를 삭제할까요?') && JSON.parse(await readOpfs('.pinproof/categories.json')).includes('UI 버그') && (await item(1)) !== '',
+    '대기 항목이 있는 카테고리는 한 번 묻고, 취소하면 그대로',
+  );
   await addCategory('빈 카테고리');
   await openCatMenu();
+  dialogs.length = 0;
   await catMenu.getByRole('button', { name: '"빈 카테고리" 삭제' }).click();
   await panel.waitForTimeout(300);
+  check(dialogs.length === 0, '빈 카테고리는 묻지 않고 바로 지움');
   check(!JSON.parse(await readOpfs('.pinproof/categories.json')).includes('빈 카테고리') && (await curCat()) === '미분류', '빈 카테고리 삭제 → 담는 곳은 미분류로');
+  await addCategory('지울 카테고리');
+  await panel.evaluate(() => {
+    const t = new DataTransfer();
+    t.setData('text/plain', '지울 카테고리에 붙여넣은 메모');
+    document.querySelector('.paste-zone').dispatchEvent(new ClipboardEvent('paste', { clipboardData: t, bubbles: true, cancelable: true }));
+  });
+  await rows().first().waitFor();
+  const doomed = Number(await rows().first().locator('.num').textContent());
+  check((await item(doomed)).includes('category: "지울 카테고리"'), '지울 카테고리에 대기 항목 하나');
+  await openCatMenu();
+  dialogs.length = 0;
+  await catMenu.getByRole('button', { name: '"지울 카테고리" 삭제' }).click();
+  await panel.waitForTimeout(500);
+  check(
+    dialogs.length === 1 && !JSON.parse(await readOpfs('.pinproof/categories.json')).includes('지울 카테고리') && (await item(doomed)) === '' && (await curCat()) === '미분류',
+    '확인하면 카테고리와 그 대기 항목(md)까지 삭제',
+  );
   await pickCategory('데이터 정합성');
   await panel.screenshot({ path: path.join(outDir, 'panel.png'), fullPage: true });
 

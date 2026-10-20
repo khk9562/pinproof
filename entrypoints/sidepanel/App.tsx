@@ -358,7 +358,7 @@ function CategoryBar({ bn }: { bn: PinProof }) {
                       <button className="cat-opt-icon" aria-label={`"${c}" 이름 바꾸기`} title="이름 바꾸기" onClick={() => startEdit({ kind: 'rename', from: c })}>
                         <Icon name="pencil" size={14} />
                       </button>
-                      <button className="cat-opt-icon danger" aria-label={`"${c}" 삭제`} title="삭제 — 대기 항목이 없는 카테고리만 지울 수 있습니다" onClick={() => bn.deleteCategory(c)}>
+                      <button className="cat-opt-icon danger" aria-label={`"${c}" 삭제`} title="삭제 — 대기 항목이 있으면 한 번 묻고 함께 지웁니다" onClick={() => bn.deleteCategory(c)}>
                         <Icon name="trash" size={14} />
                       </button>
                     </>
