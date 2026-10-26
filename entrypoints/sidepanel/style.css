@@ -332,6 +332,10 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .chip:hover { color: var(--color-ink-soft); }
 .chip[aria-pressed="true"] { border-color: var(--color-ink-faint); background: var(--color-wash); color: var(--color-ink); font-weight: 600; }
 .cleanup-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--color-ink-soft); }
+/* 날짜 순서 경고: 빨강 대신 반전 상자 + 앞의 느낌표(알림 띠의 경고와 같은 말투), 두 날짜 칸은 진한 테두리 */
+.cleanup-warn { margin: 0; padding: 6px 8px; border-radius: var(--radius-s); background: var(--color-ink); color: var(--color-inverse); font-size: 11px; font-weight: 600; line-height: 1.5; word-break: keep-all; }
+.cleanup-warn::before { content: "! "; font-weight: 800; }
+.cleanup-range .filter-select[aria-invalid="true"] { border-color: var(--color-ink); color: var(--color-ink); }
 .cleanup-pop .btn { height: 30px; font-size: 12px; }
 .notice {
   align-self: stretch; padding: 8px 12px; border-radius: var(--radius);

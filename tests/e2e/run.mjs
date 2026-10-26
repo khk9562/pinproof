@@ -575,15 +575,25 @@ try {
   await panel.waitForTimeout(400); // 색 전환(transition)이 끝난 뒤
   await panel.screenshot({ path: path.join(outDir, 'panel-archive-dark.png'), fullPage: true });
   await panel.emulateMedia({ colorScheme: 'light' });
-  // 오른쪽 아래 [정리]: 기간을 골라 지우기 — 넘김일 40일 전(#007) 하루만
+  // 오른쪽 아래 [정리]: 기간은 고를 수도 있음(비우면 전체) — 끝에는 넘김일 40일 전(#007) 하루만 지움
   const cleanBtn = panel.locator('.cleanup-btn');
   const cleanPop = panel.locator('.cleanup-pop');
   const oldDay = `${old.getFullYear()}-${p2(old.getMonth() + 1)}-${p2(old.getDate())}`;
+  const todayDay = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+  const note = () => cleanPop.locator('.cleanup-note').textContent();
   await cleanBtn.click();
+  check((await note()) === '기간을 고르지 않아 전체 2건' && !(await cleanPop.getByRole('button', { name: '2건 삭제' }).isDisabled()), '정리: 기간을 비우면 전체가 대상');
+  await cleanPop.getByLabel('시작일').fill(todayDay);
+  check((await note()) === '이 기간에 1건', '정리: 시작일만 고르면 그날부터');
+  await cleanPop.getByLabel('종료일').fill(oldDay);
   check(
-    (await cleanPop.locator('.cleanup-note').textContent()) === '시작일과 종료일을 고르세요' && (await cleanPop.getByRole('button', { name: '삭제', exact: true }).isDisabled()),
-    '정리: 기간을 다 고르기 전에는 삭제 버튼이 꺼짐',
+    (await cleanPop.locator('.cleanup-warn').textContent()) === '종료일이 시작일보다 앞섭니다. 기간을 다시 고르세요' &&
+      (await cleanPop.getByRole('button', { name: '삭제', exact: true }).isDisabled()),
+    '정리: 종료일이 시작일보다 앞서면 경고하고 삭제 버튼을 끔',
   );
+  await cleanPop.screenshot({ path: path.join(outDir, 'panel-cleanup-warn.png') });
+  await cleanPop.getByLabel('시작일').fill('');
+  check((await note()) === '이 기간에 1건', '정리: 종료일만 고르면 그날까지');
   await cleanPop.getByLabel('시작일').fill(oldDay);
   await cleanPop.getByLabel('종료일').fill(oldDay);
   check((await cleanPop.locator('.cleanup-note').textContent()) === '이 기간에 1건', '정리: 고른 기간에 드는 개수를 바로 보여 줌');
@@ -799,6 +809,7 @@ try {
   // [정리]에서 이전 기록: 보관함이 비어 있으면 이전 기록만, 만든 날짜 기준. 만든 날짜가 없는 기록은 기간에 들지 않음을 알림. Esc 로 닫기
   await panel.locator('.cleanup-btn').click();
   const recPop = panel.locator('.cleanup-pop');
+  check((await recPop.locator('.cleanup-note').textContent()) === '기간을 고르지 않아 전체 1건', '정리: 이전 기록도 기간을 비우면 날짜 없는 기록까지 전체');
   await recPop.getByLabel('시작일').fill('2000-01-01');
   await recPop.getByLabel('종료일').fill('2099-12-31');
   check(

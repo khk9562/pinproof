@@ -968,8 +968,10 @@ function Archive({ bn }: { bn: PinProof }) {
 type CleanTarget = 'archive' | 'records';
 
 /**
- * 오른쪽 아래 [정리]: 기간(시작일 ~ 종료일, 양 끝 포함)을 골라 보관함 · 이전 기록을 지운다(대기 항목은 대상이 아님).
- * 보관함은 넘김일·발견일, 이전 기록은 만든 날짜 기준. 날짜가 없는 항목은 기간에 들지 않는다.
+ * 오른쪽 아래 [정리]: 보관함 · 이전 기록을 지운다(대기 항목은 대상이 아님).
+ * 기간(시작일 ~ 종료일, 양 끝 포함)은 고를 수도 있다: 비우면 전부, 한쪽만 고르면 그날부터 / 그날까지.
+ * 보관함은 넘김일·발견일, 이전 기록은 만든 날짜 기준. 날짜를 하나라도 고르면 날짜가 없는 항목은 빠진다.
+ * 종료일이 시작일보다 앞서면 경고하고 지우지 않는다.
  * 보관함은 카테고리를 여러 개 고를 수 있다(처음엔 모두 켜짐, 끈 것만 빠짐).
  * 바깥 클릭·Esc 로 닫고(Esc 는 버튼으로 포커스), 지우면 닫는다(확인을 취소하면 그대로). 닫으면 기간도 비운다
  */
@@ -977,7 +979,7 @@ function Cleanup({ bn }: { bn: PinProof }) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState<CleanTarget>('archive');
   const [basis, setBasis] = useState<Basis>('sent');
-  /** 지울 기간(YYYY-MM-DD). 둘 다 골라야 지울 수 있다 */
+  /** 지울 기간(YYYY-MM-DD). 비우면 그쪽 끝이 열린다 */
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   /** 끈 카테고리(보관함). 새로 생긴 카테고리는 기본으로 포함되게 켠 것이 아니라 끈 것을 기억한다 */
@@ -1030,13 +1032,19 @@ function Cleanup({ bn }: { bn: PinProof }) {
       return n;
     });
   const dayOfItem = (s: ItemSummary) => dayOf(basis === 'sent' ? s.sent : s.created);
-  const ready = !!from && !!to && from <= to;
-  const inRange = (day: string | null) => ready && !!day && day >= from && day <= to;
-  const items = cur === 'archive' ? archived.filter((s) => !off.has(s.category) && inRange(dayOfItem(s))) : [];
+  const ranged = !!from || !!to;
+  /** 종료일이 시작일보다 앞섬(같은 날은 그 하루) */
+  const reversed = !!from && !!to && to < from;
+  const inRange = (day: string | null) => !reversed && (!ranged || (!!day && (!from || day >= from) && (!to || day <= to)));
+  const inCats = archived.filter((s) => !off.has(s.category));
+  const items = cur === 'archive' ? inCats.filter((s) => inRange(dayOfItem(s))) : [];
   const recs = cur === 'records' ? bn.records.filter((r) => inRange(dayOf(r.created))) : [];
   const count = items.length + recs.length;
-  const undated = cur === 'archive' ? archived.filter((s) => !dayOfItem(s)).length : bn.records.filter((r) => !dayOf(r.created)).length;
-  const span = ready ? `${dayLabel(from)} ~ ${dayLabel(to)}` : '';
+  const undated = cur === 'archive' ? inCats.filter((s) => !dayOfItem(s)).length : bn.records.filter((r) => !dayOf(r.created)).length;
+  const span =
+    from && to ? `${dayLabel(from)} ~ ${dayLabel(to)}` : from ? `${dayLabel(from)}부터` : to ? `${dayLabel(to)}까지` : '';
+  /** 확인 창 앞머리: 넘김일 기준 9월 1일 ~ 10월 26일 / 전체 기간 */
+  const scope = ranged ? `${cur === 'archive' ? BASIS_LABEL[basis] : '만든 날짜'} 기준 ${span}` : '전체 기간';
 
   const remove = async () => {
     setBusy(true);
@@ -1044,9 +1052,9 @@ function Cleanup({ bn }: { bn: PinProof }) {
       cur === 'archive'
         ? await bn.removeArchived(
             items,
-            `${BASIS_LABEL[basis]} 기준 ${span} 보관함 항목 ${count}개${onCats.length < cats.length ? `(${onCats.join(', ')})` : ''}를 삭제할까요?`,
+            `${scope} 보관함 항목 ${count}개${onCats.length < cats.length ? `(${onCats.join(', ')})` : ''}를 삭제할까요?`,
           )
-        : await bn.removeRecords(recs, `만든 날짜 기준 ${span} 이전 기록 ${count}개를 삭제할까요?`);
+        : await bn.removeRecords(recs, `${scope} 이전 기록 ${count}개를 삭제할까요?`);
     setBusy(false);
     if (done) close(true);
   };
@@ -1058,7 +1066,7 @@ function Cleanup({ bn }: { bn: PinProof }) {
         className="cleanup-btn"
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="기간을 골라 보관함 · 이전 기록을 지웁니다"
+        title="보관함 · 이전 기록을 지웁니다(기간 · 카테고리로 좁힐 수 있음)"
         onClick={() => (open ? close() : setOpen(true))}
       >
         <Icon name="trash" size={14} />
@@ -1086,20 +1094,24 @@ function Cleanup({ bn }: { bn: PinProof }) {
             </div>
           )}
           <div className="cleanup-range">
-            <input type="date" className="filter-select" aria-label="시작일" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            <input type="date" className="filter-select" aria-label="시작일 (선택)" aria-invalid={reversed} value={from} onChange={(e) => setFrom(e.target.value)} />
             <span className="filter-label">~</span>
-            <input type="date" className="filter-select" aria-label="종료일" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+            <input type="date" className="filter-select" aria-label="종료일 (선택)" aria-invalid={reversed} value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <p className="cleanup-note" role="status">
-            {cur === 'archive' && onCats.length === 0
-              ? '카테고리를 하나 이상 고르세요'
-              : !from || !to
-                ? '시작일과 종료일을 고르세요'
-                : from > to
-                  ? '시작일이 종료일보다 늦습니다'
-                  : `이 기간에 ${count}건`}
-            {undated > 0 && ` · ${cur === 'archive' && basis === 'sent' ? '넘기지 않은' : '날짜 없는'} ${undated}건은 기간에 들지 않습니다`}
-          </p>
+          {reversed ? (
+            <p className="cleanup-warn" role="alert">
+              종료일이 시작일보다 앞섭니다. 기간을 다시 고르세요
+            </p>
+          ) : (
+            <p className="cleanup-note" role="status">
+              {cur === 'archive' && onCats.length === 0
+                ? '카테고리를 하나 이상 고르세요'
+                : ranged
+                  ? `이 기간에 ${count}건`
+                  : `기간을 고르지 않아 전체 ${count}건`}
+              {ranged && undated > 0 && ` · ${cur === 'archive' && basis === 'sent' ? '넘기지 않은' : '날짜 없는'} ${undated}건은 기간에 들지 않습니다`}
+            </p>
+          )}
           <button className="btn primary" disabled={count === 0 || busy} onClick={remove}>
             {count ? `${count}건 삭제` : '삭제'}
           </button>
