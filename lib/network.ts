@@ -37,11 +37,36 @@ export function currentRoute(): string {
 /**
  * MAIN world에서 fetch/XHR을 감싸 응답 요약을 버퍼에 쌓는다.
  * 요청 헤더·쿠키·Authorization은 읽지도 저장하지도 않는다.
+ * 돌려주는 함수는 지금 route에 들어온 뒤(문서 로드 또는 SPA 이동) 보낸 요청만 꺼낸다 —
+ * 같은 route로 다시 들어오면 그 앞의 방문에서 보낸 요청은 빠진다.
  */
-export function installNetworkHook(): NetworkEntry[] {
-  const buffer: NetworkEntry[] = [];
-  const push = (e: NetworkEntry) => {
-    buffer.push(e);
+export function installNetworkHook(): (route: string) => NetworkEntry[] {
+  const buffer: { visit: number; entry: NetworkEntry }[] = [];
+  let visit = 0;
+  let visitRoute = currentRoute();
+  /** route가 바뀌었으면 새 방문으로 센다 (쿼리만 바뀐 이동은 같은 방문) */
+  const visitNow = () => {
+    const r = currentRoute();
+    if (r !== visitRoute) {
+      visitRoute = r;
+      visit++;
+    }
+    return visit;
+  };
+  for (const name of ['pushState', 'replaceState'] as const) {
+    const orig = history[name];
+    history[name] = function (this: History, ...args: Parameters<History['pushState']>) {
+      const ret = orig.apply(this, args);
+      visitNow();
+      return ret;
+    };
+  }
+  addEventListener('popstate', visitNow);
+  addEventListener('hashchange', visitNow);
+
+  // 요청을 보낸 시점의 방문 번호로 묶는다 — 응답이 route를 옮긴 뒤에 와도 원래 방문에 남는다
+  const push = (v: number, e: NetworkEntry) => {
+    buffer.push({ visit: v, entry: e });
     if (buffer.length > BUFFER_MAX) buffer.shift();
   };
 
@@ -50,6 +75,7 @@ export function installNetworkHook(): NetworkEntry[] {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
     const route = currentRoute();
+    const v = visitNow();
     const start = performance.now();
     const absUrl = new URL(url, location.href).href;
     try {
@@ -62,16 +88,16 @@ export function installNetworkHook(): NetworkEntry[] {
           res
             .clone()
             .text()
-            .then((t) => push({ ...base, size: new Blob([t]).size, bodyPreview: preview(t) }))
-            .catch(() => push({ ...base, size: 0, bodyPreview: '' }));
+            .then((t) => push(v, { ...base, size: new Blob([t]).size, bodyPreview: preview(t) }))
+            .catch(() => push(v, { ...base, size: 0, bodyPreview: '' }));
         } else {
-          push({ ...base, size: Number(res.headers.get('content-length')) || 0, bodyPreview: `(${ct ?? '바이너리'})` });
+          push(v, { ...base, size: Number(res.headers.get('content-length')) || 0, bodyPreview: `(${ct ?? '바이너리'})` });
         }
       }
       return res;
     } catch (err) {
       if (shouldRecord(absUrl)) {
-        push({
+        push(v, {
           method,
           url: absUrl,
           status: 0,
@@ -89,10 +115,10 @@ export function installNetworkHook(): NetworkEntry[] {
   const XHR = XMLHttpRequest.prototype;
   const origOpen = XHR.open;
   const origSend = XHR.send;
-  type Meta = { method: string; url: string; start: number; route: string };
+  type Meta = { method: string; url: string; start: number; route: string; visit: number };
   const meta = new WeakMap<XMLHttpRequest, Meta>();
   XHR.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
-    meta.set(this, { method: method.toUpperCase(), url: new URL(String(url), location.href).href, start: 0, route: '' });
+    meta.set(this, { method: method.toUpperCase(), url: new URL(String(url), location.href).href, start: 0, route: '', visit: 0 });
     // @ts-expect-error 가변 인자 그대로 전달
     return origOpen.call(this, method, url, ...rest);
   } as typeof XHR.open;
@@ -101,6 +127,7 @@ export function installNetworkHook(): NetworkEntry[] {
     if (m && shouldRecord(m.url)) {
       m.start = performance.now();
       m.route = currentRoute();
+      m.visit = visitNow();
       this.addEventListener('loadend', () => {
         let text = '';
         try {
@@ -110,7 +137,7 @@ export function installNetworkHook(): NetworkEntry[] {
         } catch {
           /* 읽을 수 없는 응답 */
         }
-        push({
+        push(m.visit, {
           method: m.method,
           url: m.url,
           status: this.status,
@@ -125,5 +152,8 @@ export function installNetworkHook(): NetworkEntry[] {
     return origSend.call(this, body);
   };
 
-  return buffer;
+  return (route) => {
+    const v = visitNow();
+    return buffer.filter((b) => b.visit === v && b.entry.route === route).map((b) => b.entry).slice(-50);
+  };
 }

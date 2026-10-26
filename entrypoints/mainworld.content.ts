@@ -14,7 +14,7 @@ export default defineContentScript({
   runAt: 'document_start',
   allFrames: false,
   main() {
-    const buffer = installNetworkHook();
+    const networkSnapshot = installNetworkHook();
 
     window.addEventListener('message', async (ev) => {
       if (ev.source !== window) return;
@@ -30,7 +30,7 @@ export default defineContentScript({
           data = null;
         }
       } else if (msg.op === 'network') {
-        data = buffer.filter((e) => e.route === msg.route).slice(-50);
+        data = networkSnapshot(msg.route);
       }
       const res: BridgeResponse = { key: BRIDGE_KEY, dir: 'res', id: msg.id, data };
       window.postMessage(res, location.origin);
