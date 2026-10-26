@@ -298,8 +298,43 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .rec.other .rec-title { color: var(--color-ink-soft); }
 .rec.other .rec-meta .mono { font-size: 11px; }
 
+/*
+ * 패널 바닥(스크롤해도 아래에 붙음): 오른쪽 [정리] 버튼 위, 알림 띠 아래. 알림이 뜨면 버튼이 그 위로 비켜난다.
+ * 빈 자리는 클릭이 아래 내용으로 지나가게 한다
+ */
+.panel-foot { position: sticky; bottom: 8px; margin-top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+.panel-foot > * { pointer-events: auto; }
+.cleanup { position: relative; }
+.cleanup-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: var(--radius-pill);
+  background: var(--color-surface); color: var(--color-ink-soft); font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-float);
+  transition: color var(--t), border-color var(--t), transform var(--t);
+}
+.cleanup-btn:hover, .cleanup-btn[aria-expanded="true"] { color: var(--color-ink); border-color: var(--color-ink-faint); }
+.cleanup-btn:active { transform: scale(0.96); }
+.cleanup-pop {
+  position: absolute; z-index: 20; right: 0; bottom: calc(100% + 6px); width: 260px; max-width: calc(100vw - 28px);
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--color-line); border-radius: var(--radius-l);
+  background: var(--color-surface); box-shadow: var(--shadow-float); animation: pp-notice-in var(--dur-quick) var(--ease-out) both;
+}
+.cleanup-title { font-size: 12px; font-weight: 700; }
+.cleanup-pop .filters { margin: 0; }
+/* 기간: 시작일 ~ 종료일(필터와 같은 작은 칸) */
+.cleanup-range { display: flex; align-items: center; gap: 4px; }
+.cleanup-range .filter-select { flex: 1; min-width: 0; max-width: none; padding: 0 4px; }
+/* 카테고리 칩(여러 개): 켜진 칩은 진한 테두리 · 굵게, 끈 칩은 옅게 */
+.cleanup-cats { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  max-width: 100%; height: 22px; padding: 0 8px; border: 1px solid var(--color-line); border-radius: var(--radius-pill); background: transparent;
+  color: var(--color-ink-faint); font: var(--text-label) var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  transition: border-color var(--t), color var(--t), background var(--t);
+}
+.chip:hover { color: var(--color-ink-soft); }
+.chip[aria-pressed="true"] { border-color: var(--color-ink-faint); background: var(--color-wash); color: var(--color-ink); font-weight: 600; }
+.cleanup-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--color-ink-soft); }
+.cleanup-pop .btn { height: 30px; font-size: 12px; }
 .notice {
-  position: sticky; bottom: 8px; margin-top: auto; padding: 8px 12px; border-radius: var(--radius);
+  align-self: stretch; padding: 8px 12px; border-radius: var(--radius);
   background: var(--color-ink); color: var(--color-inverse); font-size: var(--text-small); line-height: 1.5; box-shadow: var(--shadow-float);
   animation: pp-notice-in var(--dur-quick) var(--ease-out) both;
 }

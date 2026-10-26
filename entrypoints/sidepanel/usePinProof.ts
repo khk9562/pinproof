@@ -445,29 +445,41 @@ export function usePinProof() {
     [origin, refreshRecords, say],
   );
 
-  /** 보관함 비우기: 보관함 항목 전부(다른 주소에서 만든 것 포함)의 md·스크린샷·편집용 원본. 한 번 확인을 받는다 */
-  const clearArchive = useCallback(async () => {
-    const h = handleRef.current;
-    if (!h || !origin) return;
-    const list = summaries.filter((s) => s.archived);
-    if (!list.length || !window.confirm(`보관함 항목 ${list.length}개를 모두 삭제할까요?\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return;
-    try {
-      for (const s of list) {
-        window.clearTimeout(noteTimers.current.get(s.id));
-        await deleteItem(h, s.id, true);
-        await db.deleteItemModel(s.app ?? origin, s.id);
+  /**
+   * 고른 보관함 항목(다른 주소에서 만든 것 포함)의 md·스크린샷·편집용 원본을 지운다. question 으로 한 번 확인을 받는다(취소하면 false).
+   * [보관함 비우기]와 [정리](날짜로 고르기)가 함께 쓴다
+   */
+  const removeArchived = useCallback(
+    async (list: ItemSummary[], question: string): Promise<boolean> => {
+      const h = handleRef.current;
+      if (!h || !origin) return false;
+      if (!list.length || !window.confirm(`${question}\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return false;
+      try {
+        for (const s of list) {
+          window.clearTimeout(noteTimers.current.get(s.id));
+          await deleteItem(h, s.id, true);
+          await db.deleteItemModel(s.app ?? origin, s.id);
+        }
+        setModels((m) => {
+          const n = new Map(m);
+          for (const s of list) n.delete(s.id);
+          return n;
+        });
+        say(`보관함 항목 ${list.length}개를 삭제했습니다.`);
+      } catch (e) {
+        say(String(e), 'warn');
       }
-      setModels((m) => {
-        const n = new Map(m);
-        for (const s of list) n.delete(s.id);
-        return n;
-      });
-      say(`보관함 항목 ${list.length}개를 삭제했습니다.`);
-    } catch (e) {
-      say(String(e), 'warn');
-    }
-    await refreshRecords();
-  }, [origin, summaries, refreshRecords, say]);
+      await refreshRecords();
+      return true;
+    },
+    [origin, refreshRecords, say],
+  );
+
+  /** 보관함 비우기: 보관함 항목 전부 */
+  const clearArchive = useCallback(() => {
+    const list = summaries.filter((s) => s.archived);
+    return removeArchived(list, `보관함 항목 ${list.length}개를 모두 삭제할까요?`);
+  }, [summaries, removeArchived]);
 
   /** 보관함에서 되돌리기: 다시 대기 항목으로 */
   const restoreItem = useCallback(
@@ -820,29 +832,33 @@ export function usePinProof() {
     [origin, refreshRecords, say],
   );
 
-  /** 옛 기록 전부 삭제(보관한 기록 포함, 되돌릴 수 없음). 한 번 확인을 받는다 */
-  const clearRecords = useCallback(async () => {
-    const h = handleRef.current;
-    if (!h || !origin) return;
-    const list = records;
-    const ok =
-      list.length > 0 &&
-      window.confirm(`이전 기록 ${list.length}개를 모두 삭제할까요?\n\n보관한 기록까지 md 파일과 스크린샷이 프로젝트 폴더에서 지워지며 되돌릴 수 없습니다.`);
-    if (!ok) return;
-    // 이미 사라진 파일(다른 탭·에이전트가 먼저 지움)이 있어도 멈추지 않고 나머지를 지운다
-    const failed: string[] = [];
-    for (const r of list) {
-      try {
-        await deleteRecord(h, r.id, r.archived);
-        await db.deleteRecordModel(r.app ?? origin, r.id);
-      } catch {
-        failed.push(`#${padId(r.id)}`);
+  /** 고른 옛 기록 삭제(되돌릴 수 없음). question 으로 한 번 확인을 받는다(취소하면 false). [이전 기록 모두 삭제]와 [정리]가 함께 쓴다 */
+  const removeRecords = useCallback(
+    async (list: RecordSummary[], question: string): Promise<boolean> => {
+      const h = handleRef.current;
+      if (!h || !origin) return false;
+      const ok = list.length > 0 && window.confirm(`${question}\n\n보관한 기록까지 md 파일과 스크린샷이 프로젝트 폴더에서 지워지며 되돌릴 수 없습니다.`);
+      if (!ok) return false;
+      // 이미 사라진 파일(다른 탭·에이전트가 먼저 지움)이 있어도 멈추지 않고 나머지를 지운다
+      const failed: string[] = [];
+      for (const r of list) {
+        try {
+          await deleteRecord(h, r.id, r.archived);
+          await db.deleteRecordModel(r.app ?? origin, r.id);
+        } catch {
+          failed.push(`#${padId(r.id)}`);
+        }
       }
-    }
-    if (failed.length) say(`이전 기록 ${list.length - failed.length}개를 삭제했습니다. ${failed.join(', ')} 는 지우지 못했습니다.`, 'warn');
-    else say(`이전 기록 ${list.length}개를 삭제했습니다.`);
-    await refreshRecords();
-  }, [origin, records, refreshRecords, say]);
+      if (failed.length) say(`이전 기록 ${list.length - failed.length}개를 삭제했습니다. ${failed.join(', ')} 는 지우지 못했습니다.`, 'warn');
+      else say(`이전 기록 ${list.length}개를 삭제했습니다.`);
+      await refreshRecords();
+      return true;
+    },
+    [origin, refreshRecords, say],
+  );
+
+  /** 옛 기록 전부 삭제(보관한 기록 포함) */
+  const clearRecords = useCallback(() => removeRecords(records, `이전 기록 ${records.length}개를 모두 삭제할까요?`), [records, removeRecords]);
 
   return {
     tabUrl,
@@ -877,6 +893,7 @@ export function usePinProof() {
     removeItem,
     restoreItem,
     clearArchive,
+    removeArchived,
     copyItem,
     copyCategory,
     addPasted,
@@ -888,6 +905,7 @@ export function usePinProof() {
     archive,
     removeRecord,
     clearRecords,
+    removeRecords,
   };
 }
 

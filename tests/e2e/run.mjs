@@ -454,9 +454,9 @@ try {
 
   // ---------- 처리 기록 보존 ----------
   /** 에이전트처럼 항목 파일을 고친다: done 이면 status 를 완료로, append 는 파일 끝에 덧붙임 */
-  const agentEdit = (p, { done = false, append = '', sent = '' }) =>
+  const agentEdit = (p, { done = false, append = '', sent = '', category = '' }) =>
     panel.evaluate(
-      async ({ p, done, append, sent }) => {
+      async ({ p, done, append, sent, category }) => {
         let dir = await navigator.storage.getDirectory();
         const parts = p.split('/');
         const file = parts.pop();
@@ -465,11 +465,12 @@ try {
         let text = await (await fh.getFile()).text();
         if (done) text = text.replace('status: 대기', 'status: 완료');
         if (sent) text = text.replace(/^sent: .*$/m, `sent: ${sent}`);
+        if (category) text = text.replace(/^category: .*$/m, `category: "${category}"`);
         const w = await fh.createWritable();
         await w.write(text + append);
         await w.close();
       },
-      { p, done, append, sent },
+      { p, done, append, sent, category },
     );
   await agentEdit('.pinproof/items/002.md', { append: '\n## 처리 기록\n- 원인: 테스트로 덧붙인 처리 기록\n' });
   const row2 = rows().nth(1);
@@ -540,12 +541,12 @@ try {
   await archive.getByRole('button', { name: '삭제', exact: true }).click();
   await panel.waitForTimeout(500);
   check((await readOpfs('.pinproof/items/archive/009.md')) === null && !(await panel.locator('.section.archive').count()), '보관함에서 삭제: md 지움, 비면 보관함 구역도 사라짐');
-  // 보관함 필터 · 날짜 묶음: #007 은 넘김일을 40일 전으로 바꿔 두 날짜로 나뉘게(최근 30일 밖)
+  // 보관함 필터 · 날짜 묶음: #007 은 넘김일을 40일 전으로(최근 30일 밖), 카테고리도 바꿔 두 날짜 · 두 카테고리로 나뉘게
   const now = new Date();
   const p2 = (n) => String(n).padStart(2, '0');
   const old = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 40, 10, 0);
   const oldYear = old.getFullYear() === now.getFullYear() ? '' : `${old.getFullYear()}`;
-  await agentEdit('.pinproof/items/007.md', { done: true, sent: `${old.getFullYear()}-${p2(old.getMonth() + 1)}-${p2(old.getDate())}T10:00` });
+  await agentEdit('.pinproof/items/007.md', { done: true, sent: `${old.getFullYear()}-${p2(old.getMonth() + 1)}-${p2(old.getDate())}T10:00`, category: '다른 묶음' });
   await agentEdit('.pinproof/items/008.md', { done: true });
   await panel.waitForTimeout(5800);
   if ((await archive.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await archive.locator('.section-head').click();
@@ -574,6 +575,50 @@ try {
   await panel.waitForTimeout(400); // 색 전환(transition)이 끝난 뒤
   await panel.screenshot({ path: path.join(outDir, 'panel-archive-dark.png'), fullPage: true });
   await panel.emulateMedia({ colorScheme: 'light' });
+  // 오른쪽 아래 [정리]: 기간을 골라 지우기 — 넘김일 40일 전(#007) 하루만
+  const cleanBtn = panel.locator('.cleanup-btn');
+  const cleanPop = panel.locator('.cleanup-pop');
+  const oldDay = `${old.getFullYear()}-${p2(old.getMonth() + 1)}-${p2(old.getDate())}`;
+  await cleanBtn.click();
+  check(
+    (await cleanPop.locator('.cleanup-note').textContent()) === '시작일과 종료일을 고르세요' && (await cleanPop.getByRole('button', { name: '삭제', exact: true }).isDisabled()),
+    '정리: 기간을 다 고르기 전에는 삭제 버튼이 꺼짐',
+  );
+  await cleanPop.getByLabel('시작일').fill(oldDay);
+  await cleanPop.getByLabel('종료일').fill(oldDay);
+  check((await cleanPop.locator('.cleanup-note').textContent()) === '이 기간에 1건', '정리: 고른 기간에 드는 개수를 바로 보여 줌');
+  const chips = cleanPop.locator('.chip');
+  check((await chips.allTextContents()).join('|') === '데이터 정합성|다른 묶음' && (await chips.evaluateAll((els) => els.every((e) => e.getAttribute('aria-pressed') === 'true'))), '정리: 보관함 카테고리 칩, 처음엔 모두 켜짐');
+  await cleanPop.getByRole('button', { name: '다른 묶음' }).click();
+  check((await cleanPop.locator('.cleanup-note').textContent()) === '이 기간에 0건', '정리: 끈 카테고리 항목은 빠짐(교집합)');
+  await cleanPop.getByRole('button', { name: '데이터 정합성' }).click();
+  check((await cleanPop.locator('.cleanup-note').textContent()) === '카테고리를 하나 이상 고르세요', '정리: 카테고리를 모두 끄면 지울 수 없다고 알림');
+  await cleanPop.getByRole('button', { name: '다른 묶음' }).click();
+  check((await cleanPop.locator('.cleanup-note').textContent()) === '이 기간에 1건', '정리: 다시 켜면 그 카테고리 항목이 들어옴');
+  await panel.waitForTimeout(300);
+  await panel.screenshot({ path: path.join(outDir, 'panel-cleanup.png'), fullPage: true });
+  await panel.emulateMedia({ colorScheme: 'dark' });
+  await panel.waitForTimeout(400);
+  await panel.screenshot({ path: path.join(outDir, 'panel-cleanup-dark.png'), fullPage: true });
+  await panel.emulateMedia({ colorScheme: 'light' });
+  dialogs.length = 0;
+  dialogAnswer = false;
+  await cleanPop.getByRole('button', { name: '1건 삭제' }).click();
+  await panel.waitForTimeout(300);
+  dialogAnswer = true;
+  check(
+    dialogs.length === 1 && dialogs[0].startsWith(`넘김일 기준 ${oldLabel} ~ ${oldLabel} 보관함 항목 1개(다른 묶음)를 삭제할까요?`) && (await cleanPop.count()) === 1 && (await readOpfs('.pinproof/items/archive/007.md')) !== null,
+    '정리: 기간 · 개수 · 고른 카테고리로 한 번 묻고, 취소하면 창도 항목도 그대로',
+  );
+  await cleanPop.getByRole('button', { name: '1건 삭제' }).click();
+  await panel.waitForTimeout(600);
+  check(
+    (await readOpfs('.pinproof/items/archive/007.md')) === null && (await readOpfs('.pinproof/items/archive/008.md')) !== null && !(await cleanPop.count()),
+    '정리: 기간 안의 항목만 지우고 창을 닫음',
+  );
+  const btnBox = await cleanBtn.boundingBox();
+  const noticeBox = await panel.locator('.notice').boundingBox();
+  check(!!btnBox && !!noticeBox && btnBox.y + btnBox.height <= noticeBox.y, '알림 띠가 뜨면 [정리] 버튼이 그 위로 비켜남');
   // 보관함 비우기: 한 번 묻고, 취소하면 그대로 · 확인하면 보관함 항목 전부
   dialogs.length = 0;
   dialogAnswer = false;
@@ -581,7 +626,7 @@ try {
   await panel.waitForTimeout(300);
   dialogAnswer = true;
   check(
-    dialogs.length === 1 && dialogs[0].startsWith('보관함 항목 2개를 모두 삭제할까요?') && (await readOpfs('.pinproof/items/archive/007.md')) !== null,
+    dialogs.length === 1 && dialogs[0].startsWith('보관함 항목 1개를 모두 삭제할까요?') && (await readOpfs('.pinproof/items/archive/008.md')) !== null,
     '보관함 비우기: 개수를 넣어 한 번 묻고, 취소하면 그대로',
   );
   await archive.getByRole('button', { name: '보관함 비우기' }).click();
@@ -751,6 +796,17 @@ try {
   const records = panel.locator('.section.records');
   check((await records.locator('.section-head').getAttribute('aria-expanded')) === 'false' && (await records.getByRole('button', { name: '이전 기록 모두 삭제' }).isVisible()), '접힌 구역 머리에도 전체 삭제 버튼');
   await panel.screenshot({ path: path.join(outDir, 'panel-records-clear.png'), fullPage: true });
+  // [정리]에서 이전 기록: 보관함이 비어 있으면 이전 기록만, 만든 날짜 기준. 만든 날짜가 없는 기록은 기간에 들지 않음을 알림. Esc 로 닫기
+  await panel.locator('.cleanup-btn').click();
+  const recPop = panel.locator('.cleanup-pop');
+  await recPop.getByLabel('시작일').fill('2000-01-01');
+  await recPop.getByLabel('종료일').fill('2099-12-31');
+  check(
+    (await recPop.getByLabel('정리할 곳').inputValue()) === 'records' && (await recPop.locator('.cleanup-note').textContent()) === '이 기간에 0건 · 날짜 없는 1건은 기간에 들지 않습니다',
+    '정리: 보관함이 비면 이전 기록, 날짜 없는 기록은 기간에 들지 않음을 알림',
+  );
+  await panel.keyboard.press('Escape');
+  check(!(await recPop.count()) && (await panel.locator('.cleanup-btn').evaluate((el) => el === document.activeElement)), '정리: Esc 로 닫으면 [정리] 버튼으로 포커스');
   dialogs.length = 0;
   await records.getByRole('button', { name: '이전 기록 모두 삭제' }).click();
   await panel.waitForTimeout(600);

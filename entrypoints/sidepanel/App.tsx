@@ -49,6 +49,7 @@ export function App() {
     );
   }
 
+  const cleanable = bn.connection === 'granted' && (bn.archivedItems.length > 0 || bn.records.length > 0);
   return (
     <div className="panel">
       <ConnectionBar bn={bn} theme={theme} />
@@ -64,9 +65,15 @@ export function App() {
           <OldRecords bn={bn} />
         </>
       )}
-      {bn.notice && (
-        <div className={`notice ${bn.notice.kind}`} role={bn.notice.kind === 'warn' ? 'alert' : 'status'}>
-          {bn.notice.text}
+      {/* 바닥: [정리] 버튼 위, 알림 띠 아래 — 알림이 뜨면 버튼이 그 위로 비켜난다 */}
+      {(cleanable || bn.notice) && (
+        <div className="panel-foot">
+          {cleanable && <Cleanup bn={bn} />}
+          {bn.notice && (
+            <div className={`notice ${bn.notice.kind}`} role={bn.notice.kind === 'warn' ? 'alert' : 'status'}>
+              {bn.notice.text}
+            </div>
+          )}
         </div>
       )}
       <PanelPaste bn={bn} />
@@ -955,6 +962,150 @@ function Archive({ bn }: { bn: PinProof }) {
         <ItemGroup bn={bn} groups={byDay(shown, dayOfView)} mode="archived" empty={basis === 'sent' ? '넘기지 않음' : '날짜 없음'} />
       )}
     </Folded>
+  );
+}
+
+type CleanTarget = 'archive' | 'records';
+
+/**
+ * 오른쪽 아래 [정리]: 기간(시작일 ~ 종료일, 양 끝 포함)을 골라 보관함 · 이전 기록을 지운다(대기 항목은 대상이 아님).
+ * 보관함은 넘김일·발견일, 이전 기록은 만든 날짜 기준. 날짜가 없는 항목은 기간에 들지 않는다.
+ * 보관함은 카테고리를 여러 개 고를 수 있다(처음엔 모두 켜짐, 끈 것만 빠짐).
+ * 바깥 클릭·Esc 로 닫고(Esc 는 버튼으로 포커스), 지우면 닫는다(확인을 취소하면 그대로). 닫으면 기간도 비운다
+ */
+function Cleanup({ bn }: { bn: PinProof }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState<CleanTarget>('archive');
+  const [basis, setBasis] = useState<Basis>('sent');
+  /** 지울 기간(YYYY-MM-DD). 둘 다 골라야 지울 수 있다 */
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  /** 끈 카테고리(보관함). 새로 생긴 카테고리는 기본으로 포함되게 켠 것이 아니라 끈 것을 기억한다 */
+  const [off, setOff] = useState<Set<string>>(new Set());
+  /** 지우는 중에는 삭제 버튼을 꺼서 두 번 지우지 않게 */
+  const [busy, setBusy] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = (focusTrigger = false) => {
+    setOpen(false);
+    setFrom('');
+    setTo('');
+    setOff(new Set());
+    if (focusTrigger) trigger.current?.focus();
+  };
+  // 바깥을 누르면 닫고, Esc 는 포커스가 어디 있든 닫는다(버튼으로 포커스)
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(true);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const targets: [CleanTarget, string][] = [];
+  if (bn.archivedItems.length) targets.push(['archive', '보관함']);
+  if (bn.records.length) targets.push(['records', '이전 기록']);
+  // 고른 곳이 비면 남은 곳으로
+  const cur = targets.some(([t]) => t === target) ? target : targets[0][0];
+  const archived = bn.archivedItems.map((v) => v.summary);
+  // 보관함에 실제로 있는 카테고리(목록 순서 먼저)
+  const cats = [...new Set([...bn.categories, ...archived.map((s) => s.category)])].filter((c) => archived.some((s) => s.category === c));
+  const onCats = cats.filter((c) => !off.has(c));
+  const toggleCat = (c: string) =>
+    setOff((o) => {
+      const n = new Set(o);
+      if (n.has(c)) n.delete(c);
+      else n.add(c);
+      return n;
+    });
+  const dayOfItem = (s: ItemSummary) => dayOf(basis === 'sent' ? s.sent : s.created);
+  const ready = !!from && !!to && from <= to;
+  const inRange = (day: string | null) => ready && !!day && day >= from && day <= to;
+  const items = cur === 'archive' ? archived.filter((s) => !off.has(s.category) && inRange(dayOfItem(s))) : [];
+  const recs = cur === 'records' ? bn.records.filter((r) => inRange(dayOf(r.created))) : [];
+  const count = items.length + recs.length;
+  const undated = cur === 'archive' ? archived.filter((s) => !dayOfItem(s)).length : bn.records.filter((r) => !dayOf(r.created)).length;
+  const span = ready ? `${dayLabel(from)} ~ ${dayLabel(to)}` : '';
+
+  const remove = async () => {
+    setBusy(true);
+    const done =
+      cur === 'archive'
+        ? await bn.removeArchived(
+            items,
+            `${BASIS_LABEL[basis]} 기준 ${span} 보관함 항목 ${count}개${onCats.length < cats.length ? `(${onCats.join(', ')})` : ''}를 삭제할까요?`,
+          )
+        : await bn.removeRecords(recs, `만든 날짜 기준 ${span} 이전 기록 ${count}개를 삭제할까요?`);
+    setBusy(false);
+    if (done) close(true);
+  };
+
+  return (
+    <div className="cleanup" ref={root}>
+      <button
+        ref={trigger}
+        className="cleanup-btn"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="기간을 골라 보관함 · 이전 기록을 지웁니다"
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        <Icon name="trash" size={14} />
+        정리
+      </button>
+      {/* 버튼 뒤에 두어 Tab 이 버튼에서 창으로 이어진다(화면에서는 버튼 위에 뜸) */}
+      {open && (
+        <div className="cleanup-pop" role="dialog" aria-label="기간으로 정리">
+          <div className="cleanup-title">기간으로 정리</div>
+          <div className="filters">
+            <FilterSelect label="정리할 곳" value={cur} init={cur} options={targets} onChange={setTarget} />
+            {cur === 'archive' ? (
+              <FilterSelect label="기준 날짜" value={basis} init={basis} options={Object.entries(BASIS_LABEL) as [Basis, string][]} onChange={setBasis} />
+            ) : (
+              <span className="filter-label">만든 날짜 기준</span>
+            )}
+          </div>
+          {cur === 'archive' && cats.length > 1 && (
+            <div className="cleanup-cats" role="group" aria-label="카테고리">
+              {cats.map((c) => (
+                <button key={c} className="chip" aria-pressed={!off.has(c)} title={c} onClick={() => toggleCat(c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="cleanup-range">
+            <input type="date" className="filter-select" aria-label="시작일" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            <span className="filter-label">~</span>
+            <input type="date" className="filter-select" aria-label="종료일" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <p className="cleanup-note" role="status">
+            {cur === 'archive' && onCats.length === 0
+              ? '카테고리를 하나 이상 고르세요'
+              : !from || !to
+                ? '시작일과 종료일을 고르세요'
+                : from > to
+                  ? '시작일이 종료일보다 늦습니다'
+                  : `이 기간에 ${count}건`}
+            {undated > 0 && ` · ${cur === 'archive' && basis === 'sent' ? '넘기지 않은' : '날짜 없는'} ${undated}건은 기간에 들지 않습니다`}
+          </p>
+          <button className="btn primary" disabled={count === 0 || busy} onClick={remove}>
+            {count ? `${count}건 삭제` : '삭제'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
