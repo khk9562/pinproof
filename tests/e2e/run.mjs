@@ -536,9 +536,30 @@ try {
   await panel.waitForTimeout(5800);
   if ((await archive.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await archive.locator('.section-head').click();
   await archive.locator('.ev').first().locator('.ev-head').click();
-  await archive.getByRole('button', { name: '삭제' }).click();
+  await archive.getByRole('button', { name: '삭제', exact: true }).click();
   await panel.waitForTimeout(500);
   check((await readOpfs('.pinproof/items/archive/009.md')) === null && !(await panel.locator('.section.archive').count()), '보관함에서 삭제: md 지움, 비면 보관함 구역도 사라짐');
+  // 보관함 비우기: 한 번 묻고, 취소하면 그대로 · 확인하면 보관함 항목 전부
+  await agentEdit('.pinproof/items/007.md', { done: true });
+  await agentEdit('.pinproof/items/008.md', { done: true });
+  await panel.waitForTimeout(5800);
+  if ((await archive.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await archive.locator('.section-head').click();
+  await panel.screenshot({ path: path.join(outDir, 'panel-archive-clear.png'), fullPage: true });
+  dialogs.length = 0;
+  dialogAnswer = false;
+  await archive.getByRole('button', { name: '보관함 비우기' }).click();
+  await panel.waitForTimeout(300);
+  dialogAnswer = true;
+  check(
+    dialogs.length === 1 && dialogs[0].startsWith('보관함 항목 2개를 모두 삭제할까요?') && (await readOpfs('.pinproof/items/archive/007.md')) !== null,
+    '보관함 비우기: 개수를 넣어 한 번 묻고, 취소하면 그대로',
+  );
+  await archive.getByRole('button', { name: '보관함 비우기' }).click();
+  await panel.waitForTimeout(600);
+  check(
+    (await readOpfs('.pinproof/items/archive/007.md')) === null && (await readOpfs('.pinproof/items/archive/008.md')) === null && !(await panel.locator('.section.archive').count()),
+    '보관함 비우기: 확인하면 md 전부 지우고 보관함 구역도 사라짐',
+  );
 
   // ---------- 카테고리 옮기기 · 여기에 담기 · 이름 바꾸기 · 삭제 ----------
   await addCategory('버그');
@@ -580,7 +601,7 @@ try {
   dialogs.length = 0;
   await catMenu.getByRole('button', { name: '"빈 카테고리" 삭제' }).click();
   await panel.waitForTimeout(300);
-  check(dialogs.length === 0, '빈 카테고리는 묻지 않고 바로 지움');
+  check(dialogs.length === 1 && dialogs[0].startsWith('"빈 카테고리" 카테고리를 삭제할까요?'), '빈 카테고리도 한 번 묻고 지움');
   check(!JSON.parse(await readOpfs('.pinproof/categories.json')).includes('빈 카테고리') && (await curCat()) === '미분류', '빈 카테고리 삭제 → 담는 곳은 미분류로');
   await addCategory('지울 카테고리');
   await panel.evaluate(() => {
@@ -686,6 +707,18 @@ try {
   check((await otherRow.locator('.ev-body').textContent()).includes('deploy.test:5199') && !(await otherRow.locator('.ev-note').count()) && !(await otherRow.locator('.ev-del').count()), '펼치면 만든 주소 안내, 메모 칸·삭제 없음(읽기 전용)');
   await panel.screenshot({ path: path.join(outDir, 'panel-others.png'), fullPage: true });
   await others.locator('.section-head').click();
+
+  // 이전 기록 모두 삭제(번호 검사가 옛 기록 #077 을 쓰므로 그 뒤에서)
+  const records = panel.locator('.section.records');
+  if ((await records.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await records.locator('.section-head').click();
+  await panel.screenshot({ path: path.join(outDir, 'panel-records-clear.png'), fullPage: true });
+  dialogs.length = 0;
+  await records.getByRole('button', { name: '이전 기록 모두 삭제' }).click();
+  await panel.waitForTimeout(600);
+  check(
+    dialogs.length === 1 && dialogs[0].startsWith('이전 기록 1개를 모두 삭제할까요?') && (await readOpfs('.pinproof/077-옛-기록.md')) === null && !(await records.count()),
+    '이전 기록 모두 삭제: 한 번 묻고 md 지움, 비면 구역도 사라짐',
+  );
 
   // ---------- 다크 모드: 기본은 시스템 설정, 패널 버튼으로 시스템 → 라이트 → 다크 ----------
   const panelBg = () => panel.evaluate(() => getComputedStyle(document.body).backgroundColor);

@@ -261,6 +261,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .section-head[aria-expanded="false"] { border-bottom: 0; margin-bottom: 0; padding-bottom: 2px; }
 .count { color: var(--color-ink-faint); font-weight: 500; font-variant-numeric: tabular-nums; }
 .section > p.muted, .cat > p.muted { margin: 2px 0 4px; }
+/* 구역 전체에 걸리는 동작(보관함 비우기 · 이전 기록 모두 삭제): 설명 아래 오른쪽 끝 텍스트 링크 */
+.section-actions { display: flex; justify-content: flex-end; margin: 0 0 4px; }
 
 .rec { display: flex; align-items: center; gap: 8px; margin: 0 -6px; padding: 7px 6px; border-radius: var(--radius-s); transition: background var(--t); }
 .rec:hover { background: var(--color-wash); }

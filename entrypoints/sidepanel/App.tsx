@@ -60,6 +60,11 @@ export function App() {
             <p className="muted small">
               처리 완료된 항목이 여기로 옮겨집니다. 되돌리면 다시 대기 항목이 되고, 삭제하기 전까지 <code>.pinproof/items/archive/</code>에 남습니다.
             </p>
+            <div className="section-actions">
+              <button className="link danger" onClick={bn.clearArchive} title="보관함 항목을 모두 지웁니다 — 한 번 묻습니다">
+                보관함 비우기
+              </button>
+            </div>
             <ItemGroup bn={bn} views={bn.archivedItems} mode="archived" />
           </Folded>
           <Folded title="다른 주소 항목" count={bn.otherItems.length} className="others-items">
@@ -358,7 +363,7 @@ function CategoryBar({ bn }: { bn: PinProof }) {
                       <button className="cat-opt-icon" aria-label={`"${c}" 이름 바꾸기`} title="이름 바꾸기" onClick={() => startEdit({ kind: 'rename', from: c })}>
                         <Icon name="pencil" size={14} />
                       </button>
-                      <button className="cat-opt-icon danger" aria-label={`"${c}" 삭제`} title="삭제 — 대기 항목이 있으면 한 번 묻고 함께 지웁니다" onClick={() => bn.deleteCategory(c)}>
+                      <button className="cat-opt-icon danger" aria-label={`"${c}" 삭제`} title="삭제 — 한 번 묻고, 대기 항목이 있으면 함께 지웁니다" onClick={() => bn.deleteCategory(c)}>
                         <Icon name="trash" size={14} />
                       </button>
                     </>
@@ -824,6 +829,11 @@ function OldRecords({ bn }: { bn: PinProof }) {
   return (
     <Folded title="이전 기록" count={list.length} className="records">
       <p className="muted small">카테고리로 바뀌기 전의 기록입니다. 읽기만 되고, 새 항목은 위 카테고리에 쌓입니다.</p>
+      <div className="section-actions">
+        <button className="link danger" onClick={bn.clearRecords} title="이전 기록을 보관한 것까지 모두 지웁니다 — 한 번 묻습니다">
+          이전 기록 모두 삭제
+        </button>
+      </div>
       {list.map((r) => (
         <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
       ))}
