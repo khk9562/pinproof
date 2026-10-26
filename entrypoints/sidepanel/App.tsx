@@ -56,15 +56,19 @@ export function App() {
         <>
           <CategoryBar bn={bn} />
           <CategoryList bn={bn} />
-          <Folded title="보관함" count={bn.archivedItems.length} className="archive">
+          <Folded
+            title="보관함"
+            count={bn.archivedItems.length}
+            className="archive"
+            action={
+              <button className="btn" onClick={bn.clearArchive} title="보관함 항목을 모두 지웁니다 — 한 번 묻습니다">
+                보관함 비우기
+              </button>
+            }
+          >
             <p className="muted small">
               처리 완료된 항목이 여기로 옮겨집니다. 되돌리면 다시 대기 항목이 되고, 삭제하기 전까지 <code>.pinproof/items/archive/</code>에 남습니다.
             </p>
-            <div className="section-actions">
-              <button className="link danger" onClick={bn.clearArchive} title="보관함 항목을 모두 지웁니다 — 한 번 묻습니다">
-                보관함 비우기
-              </button>
-            </div>
             <ItemGroup bn={bn} views={bn.archivedItems} mode="archived" />
           </Folded>
           <Folded title="다른 주소 항목" count={bn.otherItems.length} className="others-items">
@@ -789,19 +793,25 @@ function ItemRow(props: { bn: PinProof; view: ItemView; mode: 'mine' | 'other' |
   );
 }
 
-/** 아래쪽 접힌 구역(보관함 · 다른 주소 항목 · 이전 기록). 비어 있으면 그리지 않는다 */
-function Folded(props: { title: string; count: number; className?: string; children: ReactNode }) {
+/**
+ * 아래쪽 접힌 구역(보관함 · 다른 주소 항목 · 이전 기록). 비어 있으면 그리지 않는다.
+ * 머리: [화살표 제목 개수] 가 접고 펴는 버튼, action(전체 삭제 등)은 접혀 있어도 오른쪽 끝에 보인다
+ */
+function Folded(props: { title: string; count: number; className?: string; action?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   if (props.count === 0) return null;
   return (
     <section className={`section ${props.className ?? ''}`}>
-      <button className="section-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="section-title">
-          <Chevron />
-          {props.title}
-        </span>
-        <span className="count">{props.count}</span>
-      </button>
+      <div className={`section-bar ${open ? 'open' : ''}`}>
+        <button className="section-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="section-title">
+            <Chevron />
+            {props.title}
+          </span>
+          <span className="count">{props.count}</span>
+        </button>
+        {props.action}
+      </div>
       {open && props.children}
     </section>
   );
@@ -827,13 +837,17 @@ function ItemGroup({ bn, views, mode }: { bn: PinProof; views: ItemView[]; mode:
 function OldRecords({ bn }: { bn: PinProof }) {
   const list = [...bn.records].sort((a, b) => Number(a.archived) - Number(b.archived) || b.id - a.id);
   return (
-    <Folded title="이전 기록" count={list.length} className="records">
-      <p className="muted small">카테고리로 바뀌기 전의 기록입니다. 읽기만 되고, 새 항목은 위 카테고리에 쌓입니다.</p>
-      <div className="section-actions">
-        <button className="link danger" onClick={bn.clearRecords} title="이전 기록을 보관한 것까지 모두 지웁니다 — 한 번 묻습니다">
+    <Folded
+      title="이전 기록"
+      count={list.length}
+      className="records"
+      action={
+        <button className="btn" onClick={bn.clearRecords} title="이전 기록을 보관한 것까지 모두 지웁니다 — 한 번 묻습니다">
           이전 기록 모두 삭제
         </button>
-      </div>
+      }
+    >
+      <p className="muted small">카테고리로 바뀌기 전의 기록입니다. 읽기만 되고, 새 항목은 위 카테고리에 쌓입니다.</p>
       {list.map((r) => (
         <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
       ))}

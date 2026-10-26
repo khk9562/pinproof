@@ -708,9 +708,9 @@ try {
   await panel.screenshot({ path: path.join(outDir, 'panel-others.png'), fullPage: true });
   await others.locator('.section-head').click();
 
-  // 이전 기록 모두 삭제(번호 검사가 옛 기록 #077 을 쓰므로 그 뒤에서)
+  // 이전 기록 모두 삭제(번호 검사가 옛 기록 #077 을 쓰므로 그 뒤에서). 구역을 펼치지 않아도 머리 오른쪽 끝에 버튼이 있다
   const records = panel.locator('.section.records');
-  if ((await records.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await records.locator('.section-head').click();
+  check((await records.locator('.section-head').getAttribute('aria-expanded')) === 'false' && (await records.getByRole('button', { name: '이전 기록 모두 삭제' }).isVisible()), '접힌 구역 머리에도 전체 삭제 버튼');
   await panel.screenshot({ path: path.join(outDir, 'panel-records-clear.png'), fullPage: true });
   dialogs.length = 0;
   await records.getByRole('button', { name: '이전 기록 모두 삭제' }).click();

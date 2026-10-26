@@ -249,20 +249,22 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 /* 아래쪽 접힌 구역: 보관함 · 다른 주소 항목 · 이전 기록 */
 .section { display: flex; flex-direction: column; gap: 2px; padding: 0 12px 8px; border: 1px solid var(--color-line); border-radius: var(--radius-l); }
+/* 머리 한 줄: 접고 펴는 버튼(화살표 · 제목 · 개수)이 남는 폭을 다 차지하고, 전체 삭제 버튼은 오른쪽 끝 */
+.section-bar { display: flex; align-items: center; gap: 8px; padding: 10px 0 8px; margin-bottom: 4px; border-bottom: 1px solid var(--color-line); }
 .section-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 0 8px; margin-bottom: 4px;
-  border: 0; border-bottom: 1px solid var(--color-line); background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--color-ink); text-align: left;
+  /* 최소 높이 = 오른쪽 버튼 높이: 버튼이 없는 구역(다른 주소 항목)도 머리 높이가 같다 */
+  flex: 1; min-width: 0; min-height: 24px; display: flex; align-items: center; gap: 6px; align-self: stretch; padding: 0;
+  border: 0; background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--color-ink); text-align: left;
 }
+.section-bar .btn { height: 24px; padding: 0 10px; font-size: 12px; flex: none; }
 .section-title { display: inline-flex; align-items: center; gap: 4px; }
 /* 접고 펼치는 화살표: 접혀 있으면 아래, 펼치면 위 */
 .chev { flex: none; color: var(--color-ink-faint); transition: transform var(--dur-quick) var(--ease-out); }
 [aria-expanded="true"] .chev, details[open] > summary .chev { transform: rotate(180deg); }
 /* 접힌 구역은 머리만 */
-.section-head[aria-expanded="false"] { border-bottom: 0; margin-bottom: 0; padding-bottom: 2px; }
+.section-bar:not(.open) { border-bottom: 0; margin-bottom: 0; padding-bottom: 2px; }
 .count { color: var(--color-ink-faint); font-weight: 500; font-variant-numeric: tabular-nums; }
 .section > p.muted, .cat > p.muted { margin: 2px 0 4px; }
-/* 구역 전체에 걸리는 동작(보관함 비우기 · 이전 기록 모두 삭제): 설명 아래 오른쪽 끝 텍스트 링크 */
-.section-actions { display: flex; justify-content: flex-end; margin: 0 0 4px; }
 
 .rec { display: flex; align-items: center; gap: 8px; margin: 0 -6px; padding: 7px 6px; border-radius: var(--radius-s); transition: background var(--t); }
 .rec:hover { background: var(--color-wash); }
