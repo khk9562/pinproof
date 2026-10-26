@@ -265,6 +265,24 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .section-bar:not(.open) { border-bottom: 0; margin-bottom: 0; padding-bottom: 2px; }
 .count { color: var(--color-ink-faint); font-weight: 500; font-variant-numeric: tabular-nums; }
 .section > p.muted, .cat > p.muted { margin: 2px 0 4px; }
+/* 보관함 · 이전 기록 필터: 자리를 덜 차지하게 작은 글자 한 줄. 기본값이 아닌 칸(.on)은 진하게 */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 2px 0; }
+.filter-label { font-size: var(--text-label); color: var(--color-ink-faint); }
+.filter-select {
+  max-width: 130px; height: 22px; padding: 0 2px; border: 1px solid var(--color-line); border-radius: var(--radius-s);
+  background: var(--color-wash); color: var(--color-ink-soft); font: var(--text-label) var(--font-sans); cursor: pointer;
+  transition: border-color var(--t), color var(--t);
+}
+.filter-select:hover, .filter-select:focus { border-color: var(--color-ink-faint); color: var(--color-ink); outline: none; }
+.filter-select.on { border-color: var(--color-ink-faint); color: var(--color-ink); font-weight: 600; }
+/* 키보드로 옮겨 왔을 때는 hover·걸림 표시와 구별되게 전역 포커스 링을 그대로 */
+.filter-select:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 1px; }
+.section > p.filter-empty { margin: 8px 0 4px; }
+/* 날짜 묶음 제목: 10월 26일 3 */
+.day-head { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 2px; font-size: 11px; font-weight: 600; color: var(--color-ink-soft); }
+.day-head .count { font-weight: 500; }
+/* 펼친 줄의 발견일 · 넘김일 */
+.ev-dates { font-size: 11px; color: var(--color-ink-faint); font-variant-numeric: tabular-nums; }
 
 .rec { display: flex; align-items: center; gap: 8px; margin: 0 -6px; padding: 7px 6px; border-radius: var(--radius-s); transition: background var(--t); }
 .rec:hover { background: var(--color-wash); }

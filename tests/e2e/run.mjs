@@ -454,9 +454,9 @@ try {
 
   // ---------- 처리 기록 보존 ----------
   /** 에이전트처럼 항목 파일을 고친다: done 이면 status 를 완료로, append 는 파일 끝에 덧붙임 */
-  const agentEdit = (p, { done = false, append = '' }) =>
+  const agentEdit = (p, { done = false, append = '', sent = '' }) =>
     panel.evaluate(
-      async ({ p, done, append }) => {
+      async ({ p, done, append, sent }) => {
         let dir = await navigator.storage.getDirectory();
         const parts = p.split('/');
         const file = parts.pop();
@@ -464,11 +464,12 @@ try {
         const fh = await dir.getFileHandle(file);
         let text = await (await fh.getFile()).text();
         if (done) text = text.replace('status: 대기', 'status: 완료');
+        if (sent) text = text.replace(/^sent: .*$/m, `sent: ${sent}`);
         const w = await fh.createWritable();
         await w.write(text + append);
         await w.close();
       },
-      { p, done, append },
+      { p, done, append, sent },
     );
   await agentEdit('.pinproof/items/002.md', { append: '\n## 처리 기록\n- 원인: 테스트로 덧붙인 처리 기록\n' });
   const row2 = rows().nth(1);
@@ -539,12 +540,41 @@ try {
   await archive.getByRole('button', { name: '삭제', exact: true }).click();
   await panel.waitForTimeout(500);
   check((await readOpfs('.pinproof/items/archive/009.md')) === null && !(await panel.locator('.section.archive').count()), '보관함에서 삭제: md 지움, 비면 보관함 구역도 사라짐');
-  // 보관함 비우기: 한 번 묻고, 취소하면 그대로 · 확인하면 보관함 항목 전부
-  await agentEdit('.pinproof/items/007.md', { done: true });
+  // 보관함 필터 · 날짜 묶음: #007 은 넘김일을 40일 전으로 바꿔 두 날짜로 나뉘게(최근 30일 밖)
+  const now = new Date();
+  const p2 = (n) => String(n).padStart(2, '0');
+  const old = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 40, 10, 0);
+  const oldYear = old.getFullYear() === now.getFullYear() ? '' : `${old.getFullYear()}`;
+  await agentEdit('.pinproof/items/007.md', { done: true, sent: `${old.getFullYear()}-${p2(old.getMonth() + 1)}-${p2(old.getDate())}T10:00` });
   await agentEdit('.pinproof/items/008.md', { done: true });
   await panel.waitForTimeout(5800);
   if ((await archive.locator('.section-head').getAttribute('aria-expanded')) !== 'true') await archive.locator('.section-head').click();
+  const todayLabel = `${now.getMonth() + 1}월 ${now.getDate()}일`;
+  const oldLabel = `${oldYear && `${oldYear}년 `}${old.getMonth() + 1}월 ${old.getDate()}일`;
+  const dayHeads = () => archive.locator('.day-head').allTextContents();
+  check((await dayHeads()).join('|') === `${todayLabel}1|${oldLabel}1`, `넘김일로 묶음(최근 날짜부터): ${(await dayHeads()).join('|')}`);
+  await archive.locator('.ev', { hasText: '이미지' }).locator('.ev-head').click();
+  const dates = (await archive.locator('.ev.open .ev-dates').textContent()).trim();
+  check(dates.startsWith('발견 ') && dates.endsWith(` · 넘김 ${oldYear && `${oldYear}/`}${p2(old.getMonth() + 1)}/${p2(old.getDate())} 10:00`), `펼친 줄에 발견일 · 넘김일 따로: ${dates}`);
+  await archive.getByLabel('기준 날짜').selectOption('created');
+  check((await dayHeads()).join('|') === `${todayLabel}2`, '발견일 기준이면 같은 날 하나로 묶음');
+  await archive.getByLabel('기준 날짜').selectOption('sent');
+  await archive.getByLabel('카테고리').selectOption('데이터 정합성');
+  await archive.getByLabel('기간').selectOption('7d');
+  check((await archive.locator('.ev').count()) === 1 && (await dayHeads()).join('|') === `${todayLabel}1`, '카테고리 × 넘김일 최근 7일 교집합만 남음');
+  await panel.screenshot({ path: path.join(outDir, 'panel-archive-filter.png'), fullPage: true });
+  await archive.getByLabel('카테고리').selectOption('');
+  await archive.getByLabel('기간').selectOption('all');
+  check((await archive.locator('.filter-select.on').count()) === 0, '필터를 기본값으로 되돌리면 걸림 표시도 없어짐');
+  // 화면 확인용: 포커스·마우스를 치우고 라이트 · 다크 한 장씩
+  await panel.evaluate(() => document.activeElement?.blur());
+  await panel.mouse.move(0, 0);
   await panel.screenshot({ path: path.join(outDir, 'panel-archive-clear.png'), fullPage: true });
+  await panel.emulateMedia({ colorScheme: 'dark' });
+  await panel.waitForTimeout(400); // 색 전환(transition)이 끝난 뒤
+  await panel.screenshot({ path: path.join(outDir, 'panel-archive-dark.png'), fullPage: true });
+  await panel.emulateMedia({ colorScheme: 'light' });
+  // 보관함 비우기: 한 번 묻고, 취소하면 그대로 · 확인하면 보관함 항목 전부
   dialogs.length = 0;
   dialogAnswer = false;
   await archive.getByRole('button', { name: '보관함 비우기' }).click();
@@ -662,6 +692,15 @@ try {
   await panel.locator('.section.records .section-head').click();
   check(await panel.locator('.rec-title', { hasText: '옛 기록' }).isVisible(), '옮긴 기록이 "이전 기록"(읽기 전용)에 표시');
   check(!(await panel.locator('.section.records .rec-main').evaluate((e) => e.tagName === 'BUTTON')), '이전 기록은 다시 열 수 없음(복사·보관·삭제만)');
+  const recs = panel.locator('.section.records');
+  check((await recs.locator('.day-head').allTextContents()).join('|') === '날짜 없음1', '만든 날짜가 없는 옛 기록은 "날짜 없음" 묶음');
+  await recs.getByLabel('기간(만든 날짜)').selectOption('today');
+  check(
+    (await recs.locator('.filter-empty').textContent()).startsWith('만든 날짜 오늘에 맞는 항목이 없습니다') && !(await recs.locator('.rec').count()),
+    '이전 기록 기간 필터: 맞는 것이 없으면 걸린 조건을 알려 줌',
+  );
+  await recs.getByRole('button', { name: '조건 지우기' }).click();
+  check((await recs.locator('.rec').count()) === 1, '조건 지우기로 다시 전부');
   await panel.locator('.section.records .section-head').click();
 
   // ---------- 배포 주소(localhost 아님): 사이트별로 켠 곳에서도 동작하고 로컬 폴더에 연결 ----------

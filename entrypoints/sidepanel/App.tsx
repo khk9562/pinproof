@@ -1,4 +1,4 @@
-import { KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -56,24 +56,10 @@ export function App() {
         <>
           <CategoryBar bn={bn} />
           <CategoryList bn={bn} />
-          <Folded
-            title="보관함"
-            count={bn.archivedItems.length}
-            className="archive"
-            action={
-              <button className="btn" onClick={bn.clearArchive} title="보관함 항목을 모두 지웁니다 — 한 번 묻습니다">
-                보관함 비우기
-              </button>
-            }
-          >
-            <p className="muted small">
-              처리 완료된 항목이 여기로 옮겨집니다. 되돌리면 다시 대기 항목이 되고, 삭제하기 전까지 <code>.pinproof/items/archive/</code>에 남습니다.
-            </p>
-            <ItemGroup bn={bn} views={bn.archivedItems} mode="archived" />
-          </Folded>
+          <Archive bn={bn} />
           <Folded title="다른 주소 항목" count={bn.otherItems.length} className="others-items">
             <p className="muted small">같은 폴더에 연결한 다른 주소에서 만든 대기 항목입니다. 그 주소 탭에서 열면 고칠 수 있습니다.</p>
-            <ItemGroup bn={bn} views={bn.otherItems} mode="other" />
+            <ItemGroup bn={bn} groups={[{ day: null, list: bn.otherItems }]} mode="other" />
           </Folded>
           <OldRecords bn={bn} />
         </>
@@ -696,6 +682,9 @@ function ItemRow(props: { bn: PinProof; view: ItemView; mode: 'mine' | 'other' |
       </div>
       {open && (
         <div className="ev-body">
+          <div className="ev-dates">
+            발견 {s.created ? shortStamp(s.created) : '—'} · {s.sent ? `넘김 ${shortStamp(s.sent)}` : '넘기기 전'}
+          </div>
           {ev ? (
             <>
               <Target ev={ev} />
@@ -817,29 +806,194 @@ function Folded(props: { title: string; count: number; className?: string; actio
   );
 }
 
-/** 보관함·다른 주소 항목처럼 대기 목록 밖의 항목들(번호 내림차순, 하나만 펼치기) */
-function ItemGroup({ bn, views, mode }: { bn: PinProof; views: ItemView[]; mode: 'other' | 'archived' }) {
-  const sorted = [...views].sort((a, b) => b.summary.id - a.summary.id);
-  const [openId, toggle] = useOneOpen(
-    null,
-    sorted.map((v) => v.summary.id),
-  );
+// ---------- 날짜 (frontmatter 의 'YYYY-MM-DDTHH:MM') ----------
+
+/** 시각 문자열의 날짜(YYYY-MM-DD). 형식이 아니거나 없으면 null */
+function dayOf(stamp?: string): string | null {
+  return stamp?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+}
+
+function localDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const thisYear = () => String(new Date().getFullYear());
+
+/** 펼친 줄에 보일 시각: 올해면 10/24 14:05, 아니면 2025/10/24 14:05 */
+function shortStamp(stamp: string): string {
+  const m = stamp.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?/);
+  if (!m) return stamp;
+  const date = `${m[1] === thisYear() ? '' : `${m[1]}/`}${m[2]}/${m[3]}`;
+  return m[4] ? `${date} ${m[4]}` : date;
+}
+
+/** 묶음 제목: 10월 26일(올해가 아니면 연도도) */
+function dayLabel(day: string): string {
+  const [y, mo, d] = day.split('-');
+  return `${y === thisYear() ? '' : `${y}년 `}${Number(mo)}월 ${Number(d)}일`;
+}
+
+type Period = 'all' | 'today' | '7d' | '30d';
+const PERIODS: [Period, string][] = [
+  ['all', '전체 기간'],
+  ['today', '오늘'],
+  ['7d', '최근 7일'],
+  ['30d', '최근 30일'],
+];
+const PERIOD_LABEL = Object.fromEntries(PERIODS) as Record<Period, string>;
+
+/** 기간 안에 드는 날짜인지(오늘 포함 N일). 날짜가 없으면 기간을 고른 때는 빠진다 */
+function inPeriod(day: string | null, p: Period): boolean {
+  if (p === 'all') return true;
+  const start = new Date();
+  start.setDate(start.getDate() - (p === 'today' ? 0 : p === '7d' ? 6 : 29));
+  return !!day && day >= localDay(start);
+}
+
+interface DayGroup<T> {
+  /** null = 날짜 없음(넘기지 않음 등) */
+  day: string | null;
+  list: T[];
+}
+
+/** 날짜별로 묶는다. 최근 날짜부터, 날짜가 없는 것은 맨 뒤 하나로 */
+function byDay<T>(list: T[], day: (t: T) => string | null): DayGroup<T>[] {
+  const groups = new Map<string | null, T[]>();
+  for (const t of list) {
+    const k = day(t);
+    groups.set(k, [...(groups.get(k) ?? []), t]);
+  }
+  return [...groups]
+    .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : b.localeCompare(a)))
+    .map(([day, list]) => ({ day, list }));
+}
+
+function DayHead({ label, count }: { label: string; count: number }) {
   return (
-    <div className="ev-list">
-      {sorted.map((v) => (
-        <ItemRow key={v.summary.id} bn={bn} view={v} mode={mode} open={openId === v.summary.id} onToggle={() => toggle(v.summary.id)} />
-      ))}
+    <div className="day-head">
+      {label}
+      <span className="count">{count}</span>
     </div>
   );
 }
 
-/** 카테고리 이전의 기록(이슈 단위). 읽기 전용: 프롬프트 복사 · 보관 · 삭제만 */
+/** 필터 하나(작은 선택 칸). 기본값이 아니면 진하게 보여 걸려 있음을 알린다 */
+function FilterSelect<T extends string>(props: { label: string; value: T; init: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <select
+      className={`filter-select ${props.value !== props.init ? 'on' : ''}`}
+      aria-label={props.label}
+      title={props.label}
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value as T)}
+    >
+      {props.options.map(([v, l]) => (
+        <option key={v} value={v}>
+          {l}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** 필터에 맞는 것이 없을 때: 걸린 조건과 [조건 지우기] */
+function FilterEmpty({ conds, onClear }: { conds: string[]; onClear: () => void }) {
+  return (
+    <p className="muted small filter-empty">
+      {conds.join(' · ')}에 맞는 항목이 없습니다.{' '}
+      <button className="link" onClick={onClear}>
+        조건 지우기
+      </button>
+    </p>
+  );
+}
+
+type Basis = 'sent' | 'created';
+const BASIS_LABEL: Record<Basis, string> = { sent: '넘김일', created: '발견일' };
+
+/**
+ * 보관함: 카테고리 × 기간을 함께 거르고(교집합) 남은 항목을 날짜별로 묶는다.
+ * 기간과 묶음은 같은 기준 날짜(넘김일·발견일)를 쓴다. 필터는 패널이 열려 있는 동안 유지(구역을 접어도)
+ */
+function Archive({ bn }: { bn: PinProof }) {
+  const [cat, setCat] = useState('');
+  const [basis, setBasis] = useState<Basis>('sent');
+  const [period, setPeriod] = useState<Period>('all');
+  const views = bn.archivedItems;
+  // 보관함에 실제로 있는 카테고리만(목록 순서 먼저). 고른 카테고리의 항목이 없어지면 전체로 본다
+  const cats = [...new Set([...bn.categories, ...views.map((v) => v.summary.category)])].filter((c) => views.some((v) => v.summary.category === c));
+  const picked = cats.includes(cat) ? cat : '';
+  const dayOfView = (v: ItemView) => dayOf(basis === 'sent' ? v.summary.sent : v.summary.created);
+  const shown = views.filter((v) => (!picked || v.summary.category === picked) && inPeriod(dayOfView(v), period));
+  const clear = () => {
+    setCat('');
+    setPeriod('all');
+  };
+  return (
+    <Folded
+      title="보관함"
+      count={views.length}
+      className="archive"
+      action={
+        <button className="btn" onClick={bn.clearArchive} title="보관함 항목을 모두 지웁니다 — 한 번 묻습니다">
+          보관함 비우기
+        </button>
+      }
+    >
+      <div className="filters">
+        <FilterSelect label="카테고리" value={picked} init="" options={[['', '모든 카테고리'], ...cats.map((c): [string, string] => [c, c])]} onChange={setCat} />
+        <FilterSelect label="기준 날짜" value={basis} init="sent" options={Object.entries(BASIS_LABEL) as [Basis, string][]} onChange={setBasis} />
+        <FilterSelect label="기간" value={period} init="all" options={PERIODS} onChange={setPeriod} />
+      </div>
+      <p className="muted small">
+        처리 완료된 항목이 여기로 옮겨집니다. 되돌리면 다시 대기 항목이 되고, 삭제하기 전까지 <code>.pinproof/items/archive/</code>에 남습니다.
+      </p>
+      {shown.length === 0 ? (
+        <FilterEmpty conds={[picked, period !== 'all' && `${BASIS_LABEL[basis]} ${PERIOD_LABEL[period]}`].filter((c): c is string => !!c)} onClear={clear} />
+      ) : (
+        <ItemGroup bn={bn} groups={byDay(shown, dayOfView)} mode="archived" empty={basis === 'sent' ? '넘기지 않음' : '날짜 없음'} />
+      )}
+    </Folded>
+  );
+}
+
+/**
+ * 보관함·다른 주소 항목처럼 대기 목록 밖의 항목들. 묶음마다 번호 내림차순, 펼치기는 전체에서 하나만.
+ * empty(날짜 없는 묶음의 제목)를 주면 묶음마다 제목을 단다(보관함). 없으면 목록만(다른 주소 항목)
+ */
+function ItemGroup(props: { bn: PinProof; groups: DayGroup<ItemView>[]; mode: 'other' | 'archived'; empty?: string }) {
+  const { bn, groups, mode } = props;
+  const [openId, toggle] = useOneOpen(
+    null,
+    groups.flatMap((g) => g.list.map((v) => v.summary.id)),
+  );
+  return (
+    <>
+      {groups.map((g) => (
+        <Fragment key={g.day ?? '-'}>
+          {props.empty && <DayHead label={g.day ? dayLabel(g.day) : props.empty} count={g.list.length} />}
+          <div className="ev-list">
+            {[...g.list]
+              .sort((a, b) => b.summary.id - a.summary.id)
+              .map((v) => (
+                <ItemRow key={v.summary.id} bn={bn} view={v} mode={mode} open={openId === v.summary.id} onToggle={() => toggle(v.summary.id)} />
+              ))}
+          </div>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** 카테고리 이전의 기록(이슈 단위). 읽기 전용: 프롬프트 복사 · 보관 · 삭제만. 만든 날짜로 기간을 거르고 날짜별로 묶는다 */
 function OldRecords({ bn }: { bn: PinProof }) {
-  const list = [...bn.records].sort((a, b) => Number(a.archived) - Number(b.archived) || b.id - a.id);
+  const [period, setPeriod] = useState<Period>('all');
+  const shown = bn.records.filter((r) => inPeriod(dayOf(r.created), period));
   return (
     <Folded
       title="이전 기록"
-      count={list.length}
+      count={bn.records.length}
       className="records"
       action={
         <button className="btn" onClick={bn.clearRecords} title="이전 기록을 보관한 것까지 모두 지웁니다 — 한 번 묻습니다">
@@ -847,10 +1001,25 @@ function OldRecords({ bn }: { bn: PinProof }) {
         </button>
       }
     >
+      <div className="filters">
+        <span className="filter-label">만든 날짜</span>
+        <FilterSelect label="기간(만든 날짜)" value={period} init="all" options={PERIODS} onChange={setPeriod} />
+      </div>
       <p className="muted small">카테고리로 바뀌기 전의 기록입니다. 읽기만 되고, 새 항목은 위 카테고리에 쌓입니다.</p>
-      {list.map((r) => (
-        <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
-      ))}
+      {shown.length === 0 ? (
+        <FilterEmpty conds={[`만든 날짜 ${PERIOD_LABEL[period]}`]} onClear={() => setPeriod('all')} />
+      ) : (
+        byDay(shown, (r) => dayOf(r.created)).map((g) => (
+          <Fragment key={g.day ?? '-'}>
+            <DayHead label={g.day ? dayLabel(g.day) : '날짜 없음'} count={g.list.length} />
+            {[...g.list]
+              .sort((a, b) => Number(a.archived) - Number(b.archived) || b.id - a.id)
+              .map((r) => (
+                <RecordRow key={`${r.archived}-${r.id}`} r={r} bn={bn} />
+              ))}
+          </Fragment>
+        ))
+      )}
     </Folded>
   );
 }
