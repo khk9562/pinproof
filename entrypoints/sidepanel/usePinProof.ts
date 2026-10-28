@@ -125,11 +125,11 @@ export function usePinProof() {
     }
     return {
       category,
-      pending: views.mine.filter((v) => v.summary.category === category).length,
+      categories: categories.includes(category) ? categories : [...categories, category],
       nextNumber,
       markers,
     };
-  }, [views, category, nextNumber]);
+  }, [views, category, categories, nextNumber]);
   const overlayRef = useRef(overlayState);
   overlayRef.current = overlayState;
 
@@ -362,9 +362,18 @@ export function usePinProof() {
     return () => window.clearInterval(t);
   }, [connection, refreshRecords]);
 
+  /** 지금 담을 카테고리(앱별로 기억) */
+  const setCategory = useCallback(
+    (name: string) => {
+      setCategoryState(name);
+      if (origin) db.setCurrentCategory(origin, name);
+    },
+    [origin],
+  );
+
   // ---------- 담기 (content script 메시지) ----------
   const onCaptured = useCallback(
-    async (evidence: Evidence) => {
+    async (evidence: Evidence, picked?: string) => {
       if (!origin) return;
       if (connection !== 'granted') {
         say('먼저 프로젝트 폴더를 연결해주세요.', 'warn');
@@ -381,12 +390,16 @@ export function usePinProof() {
         say(`이미 #${padId(existing.id)}(${existing.category})로 담은 요소입니다.`, 'warn');
         return;
       }
-      const item = await createItem(evidence, categoryRef.current);
+      // 팝오버가 열린 사이 그 카테고리를 지우거나 이름을 바꿨으면 지금 카테고리로 담는다
+      const to = picked && (categories.includes(picked) || picked === categoryRef.current) ? picked : categoryRef.current;
+      const item = await createItem(evidence, to);
       if (!item) return;
+      // 팝오버에서 고른 카테고리를 다음 담기의 기본값으로 기억한다
+      if (to !== categoryRef.current) setCategory(to);
       setFreshUid(item.evidence.uid);
       refreshRecords();
     },
-    [origin, connection, views, createItem, refreshRecords, say],
+    [origin, connection, views, categories, createItem, setCategory, refreshRecords, say],
   );
 
   /** 메모: 편집용 원본은 바로, 파일은 잠시 모았다가 쓴다 */
@@ -543,14 +556,6 @@ export function usePinProof() {
   );
 
   // ---------- 카테고리 ----------
-  const setCategory = useCallback(
-    (name: string) => {
-      setCategoryState(name);
-      if (origin) db.setCurrentCategory(origin, name);
-    },
-    [origin],
-  );
-
   const addCategory = useCallback(
     async (raw: string) => {
       const h = handleRef.current;
@@ -640,7 +645,7 @@ export function usePinProof() {
     const listener = (msg: ToPanel, sender: chrome.runtime.MessageSender, sendResponse: (r?: unknown) => void) => {
       if (sender.tab?.id !== tabId) return;
       if (msg.type === 'bn:captured') {
-        onCaptured(msg.evidence);
+        onCaptured(msg.evidence, msg.category);
         sendResponse({ ok: true });
       } else if (msg.type === 'bn:mode') {
         sendResponse({ ok: true });

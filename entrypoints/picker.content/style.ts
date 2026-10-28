@@ -124,18 +124,6 @@ kbd {
 /* 모드 중 압정 로고: "진행 중" 숨쉬기 — 1.2초 주기 투명도 1 → 0.3 → 1 (유일한 반복 모션) */
 .tb.mode .logo svg { animation: pp-breathe 1.2s ease-in-out infinite; }
 @keyframes pp-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-/* 기록 칩: 진한 바탕은 "지금 담기는 곳"에만, 미분류는 옅게 */
-.rec {
-  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; margin-left: 2px;
-  border-radius: var(--radius-pill); background: var(--color-wash-strong); color: var(--color-ink); font-size: 12px; font-weight: 500; white-space: nowrap;
-}
-.rec .cat { max-width: 120px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.rec.loose { background: var(--color-wash); color: var(--color-ink-soft); }
-.rec.loose::before { content: ""; width: 7px; height: 7px; border-radius: var(--radius-paper); background: var(--color-ink-faint); }
-.rec .n { display: inline-block; height: 16px; line-height: 16px; overflow: hidden; vertical-align: middle; font-variant-numeric: tabular-nums; font-weight: 600; }
-.rec .n i { display: block; height: 16px; font-style: normal; }
-.rec .n .roll { animation: pp-roll .2s var(--ease-out) forwards; }
-@keyframes pp-roll { from { transform: translateY(0); } to { transform: translateY(-16px); } }
 .logo.bump { animation: pp-bump .3s var(--ease-out); }
 @keyframes pp-bump { 0% { transform: none; } 40% { transform: translateY(4px) scale(.94); } 75% { transform: translateY(-2px); } 100% { transform: none; } }
 
@@ -202,6 +190,16 @@ kbd {
 .p-to .p-cat { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .p-to.plain { padding-left: 7px; }
 .p-to.loose { background: var(--color-wash); color: var(--color-ink-soft); padding-left: 7px; }
+/* 담기 팝오버의 카테고리 고르기: pill 모양 그대로 안에 select. 마지막에 쓴 카테고리가 골라져 있다 */
+.p-to.pick { gap: 3px; padding-right: 6px; cursor: pointer; transition: background var(--t); }
+.p-to.pick:hover { background: var(--color-line); }
+.p-to.pick:has(select:focus-visible) { outline: 2px solid var(--color-ink); outline-offset: 1px; }
+.p-to.pick select {
+  appearance: none; max-width: 120px; height: 20px; padding: 0 0 0 2px; border: 0; outline: none; background: transparent;
+  color: inherit; font: 600 12px var(--font-sans); text-overflow: ellipsis; cursor: pointer;
+}
+.p-to.pick select option { background: var(--color-surface); color: var(--color-ink); font-weight: 400; }
+.p-to.pick .chev { flex: none; color: var(--color-ink-soft); pointer-events: none; }
 .lt { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--radius-pill); font-variant-numeric: tabular-nums; background: var(--color-ink); color: var(--color-inverse); font: 700 11px/1 var(--font-sans); flex: none; }
 .lt.temp { background: transparent; color: var(--color-ink); box-shadow: inset 0 0 0 1.5px var(--color-ink); }
 .field { border: 1px solid var(--color-line); border-radius: var(--radius); background: var(--color-wash); transition: border-color var(--t); }

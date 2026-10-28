@@ -1,8 +1,6 @@
 import { OverlayState, PickMode } from '@/lib/messages';
 import { ICON, PIN_LOGO } from './icons';
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-
 const MODE_NAME: Record<PickMode, string> = { element: '요소', text: '텍스트', region: '영역' };
 /** 모드 중 안내 띠의 모드 이름을 누르면 여는 선택 메뉴 항목 */
 const MENU: { pick: PickMode | 'network'; name: string; key: string }[] = [
@@ -39,12 +37,12 @@ export class Toolbar {
   private swap: HTMLElement;
   private tools: HTMLElement;
   private guide: HTMLElement;
-  private rec: HTMLElement;
   private logo: HTMLElement;
   private eye: HTMLButtonElement;
   /** 드래그해서 옮긴 위치. 없으면 아래 가운데(기본) */
   private pos: Pos | null = null;
   private readonly key = `toolbarPos:${location.origin}`;
+  /** 마커 수. 늘면(방금 담음) 압정 로고를 한 번 튕긴다 */
   private count: number | null = null;
   private hideTimer: number | undefined;
   private suppressClick = false;
@@ -73,12 +71,10 @@ export class Toolbar {
         </div>
         <div class="guide" aria-live="polite"></div>
       </div>
-      <span class="rec"></span>
     `;
     this.swap = this.el.querySelector('.swap')!;
     this.tools = this.el.querySelector('.tools')!;
     this.guide = this.el.querySelector('.guide')!;
-    this.rec = this.el.querySelector('.rec')!;
     this.logo = this.el.querySelector('.logo')!;
     this.eye = this.el.querySelector('[data-act="markers"]')!;
     this.menu = document.createElement('div');
@@ -152,18 +148,10 @@ export class Toolbar {
   }
 
   setState(state: OverlayState) {
-    const count = state.pending;
-    const off = state.nextNumber === null;
+    const count = state.markers.length;
     const grew = this.count !== null && count > this.count && !this.el.hidden;
-    const prev = this.count;
     this.count = count;
-    this.rec.classList.toggle('loose', off);
-    this.rec.title = off ? '사이드 패널에서 프로젝트 폴더를 연결하면 담을 수 있습니다' : `담는 곳: "${state.category}" · 대기 항목 ${count}건`;
-    this.rec.innerHTML = `<span class="cat">${esc(state.category)}</span> · 대기 <span class="n"><i>${count}</i></span>`;
     if (grew) {
-      const n = this.rec.querySelector('.n')!;
-      n.innerHTML = `<span class="roll" style="display:block"><i>${prev}</i><i>${count}</i></span>`;
-      window.setTimeout(() => (n.innerHTML = `<i>${count}</i>`), 220);
       this.logo.classList.remove('bump');
       void this.logo.offsetWidth;
       this.logo.classList.add('bump');

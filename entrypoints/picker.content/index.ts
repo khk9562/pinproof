@@ -287,10 +287,10 @@ class Picker {
     this.toolbar.setMarkersHidden(this.markersHidden);
   }
 
-  /** 담길 곳: 지금 카테고리와 붙을 번호. 폴더를 연결하지 않았으면 null */
-  private destination(): { category: string; num: number } | null {
+  /** 담길 곳: 마지막에 쓴 카테고리, 고를 수 있는 카테고리, 붙을 번호. 폴더를 연결하지 않았으면 null */
+  private destination(): { category: string; categories: string[]; num: number } | null {
     const s = this.state;
-    return s && s.nextNumber !== null ? { category: s.category, num: s.nextNumber } : null;
+    return s && s.nextNumber !== null ? { category: s.category, categories: s.categories, num: s.nextNumber } : null;
   }
 
   /** 지금 주소(경로 + ?쿼리 + #해시)에서 같은 대상을 이미 담았으면 그 마커 */
@@ -615,9 +615,9 @@ class Picker {
   }
 
   /** 패널로 보낸다. 페이지에는 마커(패널이 상태를 돌려줄 때)와 경고만 보인다 */
-  private async deliver(evidence: Evidence) {
+  private async deliver(evidence: Evidence, category?: string) {
     try {
-      await this.send({ type: 'bn:captured', evidence });
+      await this.send({ type: 'bn:captured', evidence, category });
       if (this.pendingWarning) {
         this.toast(this.pendingWarning, 'warn');
         this.pendingWarning = null;
@@ -644,7 +644,7 @@ class Picker {
 
   /**
    * 팝오버를 띄우고 메모를 받는다. 스크린샷은 팝오버를 띄우기 전에(오버레이를 숨기고) 찍어 둔다.
-   * Enter·담기 → 패널로 보냄, Esc·취소·바깥 클릭 → 버림.
+   * Enter·담기 → 고른 카테고리로 패널에 보냄, Esc·취소·바깥 클릭 → 버림.
    */
   private ask(ev: Evidence, head: PopoverHead, x: number, target: Box, pin: { x: number; y: number } | undefined, el?: Element, done?: () => void) {
     this.setCurrent(null);
@@ -657,9 +657,9 @@ class Picker {
       target,
       el,
       pin,
-      onSubmit: (note) => {
+      onSubmit: (note, category) => {
         this.dropUid = ev.uid;
-        this.deliver({ ...ev, note });
+        this.deliver({ ...ev, note }, category);
         done?.();
       },
       onCancel: () => done?.(),

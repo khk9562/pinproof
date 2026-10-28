@@ -233,8 +233,7 @@ try {
   check(await current.locator('.cat-copy').isDisabled(), '항목이 없는 카테고리는 프롬프트 복사 꺼짐');
   check(JSON.parse(await readOpfs('.pinproof/categories.json')).join(',') === '미분류,데이터 정합성', 'categories.json 에 카테고리 목록');
   await app.waitForTimeout(300);
-  const chip = await app.locator('pinproof-overlay .tb .rec').textContent();
-  check(chip.includes('데이터 정합성') && chip.includes('대기 0'), `툴바 칩에 지금 카테고리와 대기 개수: ${chip}`);
+  check(!(await app.locator('pinproof-overlay .tb .rec').count()), '툴바에는 카테고리 · 대기 개수 칩이 없음');
 
   // ---------- 요소 ----------
   await tool('요소').click();
@@ -242,8 +241,12 @@ try {
   await app.hover('#help');
   await app.click('#help'); // 실제 마우스 클릭 → 그 자리에 팝오버
   await pop.waitFor({ timeout: 5000 });
-  const to1 = await pop.locator('.p-to').textContent();
-  check(to1.includes('1') && to1.includes('데이터 정합성'), `팝오버에 담길 곳 "번호 + 카테고리": ${to1}`);
+  const pick1 = pop.locator('.p-to select');
+  const opts1 = await pick1.locator('option').allTextContents();
+  check(
+    (await pop.locator('.p-to .lt').textContent()) === '1' && (await pick1.inputValue()) === '데이터 정합성' && opts1.join(',') === '미분류,데이터 정합성',
+    `팝오버에 번호 + 카테고리 select(마지막에 쓴 카테고리가 골라져 있음): ${opts1.join(',')}`,
+  );
   await confirm();
   await rows().first().waitFor({ timeout: 5000 }).catch(() => {});
   check((await rows().count()) === 1, '클릭 → 팝오버 Enter 로 지금 카테고리에 담김');

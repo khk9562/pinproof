@@ -3,6 +3,8 @@ import { ICON } from './icons';
 
 export type Box = { left: number; top: number; width: number; height: number };
 
+const CHEVRON_DOWN = '<svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4L5 6.5l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export interface PopoverHead {
@@ -18,8 +20,8 @@ export interface PopoverHead {
 
 export interface NewOptions {
   head: PopoverHead;
-  /** 담길 곳: 지금 카테고리와 붙을 번호. null 이면 폴더 미연결 */
-  to: { category: string; num: number } | null;
+  /** 담길 곳: 미리 골라 둘 카테고리(마지막에 쓴 것), 고를 수 있는 카테고리, 붙을 번호. null 이면 폴더 미연결 */
+  to: { category: string; categories: string[]; num: number } | null;
   /** 팝오버를 붙일 가로 위치(클릭 x) */
   x: number;
   /** 대상 영역(선택 강조·팝오버 위/아래 배치 기준) */
@@ -28,7 +30,7 @@ export interface NewOptions {
   el?: Element;
   /** 임시 마커를 세울 자리 */
   pin?: { x: number; y: number };
-  onSubmit: (note: string) => void;
+  onSubmit: (note: string, category: string | undefined) => void;
   onCancel: () => void;
 }
 
@@ -77,7 +79,10 @@ export class Popover {
   openNew(o: NewOptions) {
     this.close(false);
     const to = o.to
-      ? `<span class="p-to" title="&quot;${esc(o.to.category)}&quot;에 #${pad(o.to.num)} 로 담깁니다"><span class="lt temp">${o.to.num}</span><span class="p-cat">${esc(o.to.category)}</span></span>`
+      ? `<label class="p-to pick" title="#${pad(o.to.num)} 로 담깁니다. 카테고리를 고르세요"><span class="lt temp">${o.to.num}</span>` +
+        `<select class="p-cat" aria-label="담을 카테고리">${o.to.categories
+          .map((c) => `<option value="${esc(c)}"${c === o.to!.category ? ' selected' : ''}>${esc(c)}</option>`)
+          .join('')}</select>${CHEVRON_DOWN}</label>`
       : '<span class="p-to loose" title="사이드 패널에서 프로젝트 폴더를 연결하면 담을 수 있습니다">폴더 미연결</span>';
     const card = this.build(
       'pop',
@@ -95,11 +100,23 @@ export class Popover {
        </div>`,
     );
     const ta = card.querySelector('textarea')!;
+    const cat = card.querySelector<HTMLSelectElement>('select.p-cat');
     const submit = () => {
       const note = ta.value.replace(/\s*\n\s*/g, ' ').trim();
       this.close(true);
-      o.onSubmit(note);
+      o.onSubmit(note, cat?.value);
     };
+    // select 에서도 Enter=담기, Esc=취소. 다른 키는 페이지 단축키로 새지 않게 막는다
+    cat?.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.cancel();
+      }
+    });
     this.cancelFn = () => {
       this.close(true);
       o.onCancel();

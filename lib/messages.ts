@@ -41,9 +41,9 @@ export interface MarkerInfo {
 }
 
 export interface OverlayState {
-  /** 지금 담을 카테고리와 그 카테고리의 대기 항목 수(툴바 칩) */
+  /** 마지막에 쓴 카테고리(담기 팝오버에서 미리 골라 둔다)와 고를 수 있는 카테고리 */
   category: string;
-  pending: number;
+  categories: string[];
   /** 다음에 담으면 붙을 번호(팝오버 임시 마커). 폴더 연결 전이면 null */
   nextNumber: number | null;
   markers: MarkerInfo[];
@@ -64,7 +64,8 @@ export interface NetworkSnapshot {
 
 /** content script → 사이드 패널 (chrome.runtime.sendMessage) */
 export type ToPanel =
-  | { type: 'bn:captured'; evidence: Evidence }
+  /** category: 담기 팝오버에서 고른 카테고리. 없으면(네트워크 담기) 마지막에 쓴 카테고리 */
+  | { type: 'bn:captured'; evidence: Evidence; category?: string }
   | { type: 'bn:mode'; mode: PickMode | null }
   | { type: 'bn:hello'; url: string }
   | { type: 'bn:edit'; uid: string; edit: EvidenceEdit };
