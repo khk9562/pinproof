@@ -11,7 +11,7 @@ const MENU: { pick: PickMode | 'network'; name: string; key: string }[] = [
 ];
 const CHEVRON = '<svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 6.5L5 4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const MODE_HINT: Record<PickMode, string> = {
-  element: '클릭해서 담기<span class="dot3"></span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 이동',
+  element: '클릭해서 담기<span class="dot3"></span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 이동<span class="dot3"></span><kbd>Alt</kbd> 누르는 동안 페이지 조작',
   text: '글자를 드래그해서 담기',
   region: '사각형을 그려서 담기',
 };
@@ -62,7 +62,7 @@ export class Toolbar {
       <span class="logo" title="PinProof">${PIN_LOGO}</span>
       <div class="swap">
         <div class="tools">
-          <button class="tbtn" data-mode="element" title="요소 담기 (Alt+Shift+E)">${ICON.element}요소</button>
+          <button class="tbtn" data-mode="element" title="요소 담기 (Alt+Shift+E) · 선택 중 Alt를 누르면 페이지 조작">${ICON.element}요소</button>
           <button class="tbtn" data-mode="text" title="텍스트 담기 (Alt+Shift+T)">${ICON.text}텍스트</button>
           <button class="tbtn" data-mode="region" title="영역 담기 (Alt+Shift+R)">${ICON.region}영역</button>
           <button class="tbtn" data-act="network" title="이 route의 API 호출 담기 (Alt+Shift+N)">${ICON.network}네트워크</button>
@@ -138,6 +138,12 @@ export class Toolbar {
         `<button class="hint stop tbtn" data-act="stop" title="모드 종료 (Esc)"><kbd>Esc</kbd> 종료</button>`;
     }
     this.el.classList.toggle('mode', !!mode);
+    this.fitSwap();
+  }
+
+  setPageInteraction(active: boolean) {
+    if (this.mode !== 'element') return;
+    this.guide.querySelector('.hint')!.innerHTML = active ? '페이지 조작 중<span class="dot3"></span><kbd>Alt</kbd>를 놓으면 요소 선택' : MODE_HINT.element;
     this.fitSwap();
   }
 

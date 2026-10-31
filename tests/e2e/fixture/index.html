@@ -32,6 +32,19 @@
           document.getElementById('list').innerHTML = `<table id="node-table"><thead><tr><th>이름</th><th>CPU</th></tr></thead><tbody>${rows}</tbody></table>`;
         });
       fetch('/api/forbidden').catch(() => {});
+      if (new URLSearchParams(location.search).has('modal-startup')) {
+        const first = document.createElement('dialog');
+        first.id = 'startup-first';
+        first.innerHTML = '<div id="startup-popover" popover="auto"><input aria-label="Startup input"></div>';
+        const second = document.createElement('dialog');
+        second.id = 'startup-second';
+        document.body.append(first, second);
+        second.showModal();
+        first.showModal();
+        const popup = first.querySelector('[popover]');
+        popup.showPopover();
+        popup.querySelector('input').focus();
+      }
     </script>
   </body>
 </html>

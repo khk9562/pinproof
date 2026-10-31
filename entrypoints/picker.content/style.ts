@@ -8,6 +8,7 @@ import TOKENS_CSS from '@/lib/tokens.css?raw';
  */
 export const OVERLAY_CSS = `
 :host { all: initial; }
+:host::backdrop { display: none; }
 ${TOKENS_CSS}
 :host {
   /* Paperlogy 는 Shadow DOM 안에서 등록할 수 없어(호스트 문서에 넣어야 함) 대체 폰트부터 */

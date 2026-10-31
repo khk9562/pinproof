@@ -132,6 +132,18 @@ export interface Item {
   evidence: Evidence;
 }
 
+export type ItemEditField = 'note' | 'category' | 'sent';
+
+export interface PendingItemSave {
+  kind: 'item-save';
+  revision?: string;
+  item: Item;
+  folder: FileSystemDirectoryHandle;
+  create: boolean;
+  fields?: ItemEditField[];
+  error?: string;
+}
+
 /** items/ 폴더를 읽어 얻는 목록용 요약(frontmatter) */
 export interface ItemSummary {
   id: number;
