@@ -350,3 +350,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.pending-saves { margin: 12px 0; padding: 14px; border: 2px solid var(--color-ink); border-radius: 8px; }
+.pending-saves h2 { margin: 0; font-size: 14px; }
+.pending-save { padding: 12px 0; border-top: 1px solid var(--color-line); overflow-wrap: anywhere; }
+.pending-save p { margin: 6px 0; }
