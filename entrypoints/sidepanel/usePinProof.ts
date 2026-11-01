@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connectFolder, describeSkill, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
+import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
 import * as db from '@/lib/db';
 import {
   archiveRecord,
@@ -34,8 +35,6 @@ const params = new URLSearchParams(location.search);
 /** e2e 테스트용: ?tab=<id> 로 대상 탭 고정, ?opfs=1 로 폴더 대신 OPFS 사용 */
 const FIXED_TAB = params.get('tab') ? Number(params.get('tab')) : null;
 const USE_OPFS = params.get('opfs') === '1';
-/** e2e 테스트용: ?skill=1 이면 폴더 연결 때 선택 스킬 설치 질문에 '예'로 답한다(OPFS 모드는 확인 창 없이 진행) */
-const E2E_SKILL = params.get('skill') === '1';
 
 function nowStamp(): string {
   const d = new Date();
@@ -95,6 +94,14 @@ export function usePinProof() {
   const [legacy, setLegacy] = useState(false);
   /** 선택 스킬(/trace-screen-data) 설치 상태. 없으면 [설치], 옛 버전이면 [업데이트] */
   const [skill, setSkill] = useState<SkillStatus | null>(null);
+  /** 폴더 연결 확인 창(파일 목록 + 선택 스킬 체크박스). 답하면 connectFolder 가 이어서 진행한다 */
+  const [setupPrompt, setSetupPrompt] = useState<SetupPrompt | null>(null);
+  const setupAnswer = useRef<((a: SetupAnswer) => void) | null>(null);
+  const answerSetup = useCallback((a: SetupAnswer) => {
+    setupAnswer.current?.(a);
+    setupAnswer.current = null;
+    setSetupPrompt(null);
+  }, []);
 
   /** localhost 가 아닌 탭에서, 사용자가 이 사이트를 켜 두었는지 */
   const [siteAllowed, setSiteAllowed] = useState(false);
@@ -799,8 +806,11 @@ export function usePinProof() {
     const ok = await connectFolder(
       origin,
       root,
-      (items, folder) => (USE_OPFS ? true : window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`)),
-      (message) => (USE_OPFS ? E2E_SKILL : window.confirm(message)),
+      (prompt) =>
+        new Promise<SetupAnswer>((resolve) => {
+          setupAnswer.current = resolve;
+          setSetupPrompt(prompt);
+        }),
     );
     if (ok) {
       await loadOrigin();
@@ -1022,6 +1032,8 @@ export function usePinProof() {
     moveLegacy,
     skill,
     setupSkill,
+    setupPrompt,
+    answerSetup,
     connect,
     reconnect,
     disconnect,

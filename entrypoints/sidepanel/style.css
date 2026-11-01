@@ -37,6 +37,21 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .empty .mono { color: var(--color-ink); }
 .site-on { margin: 0; }
 .skill-offer { margin: 0; }
+.setup-dialog {
+  width: min(360px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; border: 1px solid var(--color-line); border-radius: var(--radius-l);
+  background: var(--color-bg); color: var(--color-ink); box-shadow: var(--shadow-float);
+}
+.setup-dialog::backdrop { background: rgb(0 0 0 / 0.32); }
+.setup-dialog h2 { margin: 0 0 4px; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.setup-dialog p { margin: 0 0 8px; }
+.setup-items { margin: 0 0 12px; padding-left: 18px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.setup-items li + li { margin-top: 2px; }
+.setup-skill { margin: 0 0 12px; padding: 10px; border: 1px solid var(--color-line); border-radius: var(--radius-s); background: var(--color-surface); }
+.setup-skill label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: 6px; }
+.setup-skill input { margin: 2px 0 0; accent-color: var(--color-ink); width: 15px; height: 15px; flex: none; }
+.setup-skill .setup-items { margin-bottom: 6px; }
+.setup-skill p:last-child { margin: 0; }
+.setup-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .skill-offer .link { color: var(--color-ink); text-decoration: underline; text-underline-offset: 2px; }
 .skill-offer .link:hover { text-decoration-thickness: 2px; }
 

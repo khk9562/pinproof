@@ -15,53 +15,67 @@ export function describePlan(plan: SetupPlan): string[] {
   return items;
 }
 
-/**
- * 선택 스킬 설치 확인 창의 문구.
- * offer: 폴더 처음 연결 때 묻기 · install: 패널 [설치] · update: 패널 [업데이트](파일 교체)
- */
-export function describeSkill(git: SetupPlan['git'], mode: 'offer' | 'install' | 'update'): string {
-  const update = mode === 'update';
+/** 스킬 설치 위치와 git 무시 설정 안내(연결 확인 창 · 패널 확인 창 공통) */
+export function skillFileLines(git: SetupPlan['git'], update = false): string[] {
   const where =
     git === 'repo'
-      ? `.git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 를 넣어 팀 저장소에는 올라가지 않습니다.`
+      ? `.git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 추가 (팀 저장소에는 올라가지 않음)`
       : git === 'worktree'
-        ? `git 워크트리라 무시 설정을 쓰지 못합니다. 메인 저장소의 .git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 를 넣거나, 커밋하지 않도록 주의하세요.`
+        ? `git 워크트리라 무시 설정을 쓰지 못합니다. 메인 저장소의 .git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 를 넣거나, 커밋하지 않도록 주의하세요`
         : '';
+  return [`.claude/skills/${SKILL_NAME}/SKILL.md ${update ? '교체' : '생성'}`, ...(where ? [where] : [])];
+}
+
+export const SKILL_SUMMARY = '화면 값을 API → 원천(DB 등) → 산식까지 따라가 맞는지 점검하고 이슈 초안까지만 만드는 Claude Code 스킬입니다. 코드는 고치지 않습니다.';
+
+/** 패널의 [이 프로젝트에 설치] · [업데이트] 확인 창 문구 */
+export function describeSkill(git: SetupPlan['git'], mode: 'install' | 'update'): string {
+  const update = mode === 'update';
   return [
-    mode === 'offer'
-      ? `데이터 정합성 점검 스킬(/${SKILL_NAME})도 이 프로젝트에 설치할까요? (선택)`
-      : update
-        ? `데이터 정합성 점검 스킬(/${SKILL_NAME})을 새 버전으로 교체합니다. 이 파일을 직접 고쳤다면 그 내용은 사라집니다.`
-        : `데이터 정합성 점검 스킬(/${SKILL_NAME})을 이 프로젝트에 설치합니다.`,
+    update
+      ? `데이터 정합성 점검 스킬(/${SKILL_NAME})을 새 버전으로 교체합니다. 이 파일을 직접 고쳤다면 그 내용은 사라집니다.`
+      : `데이터 정합성 점검 스킬(/${SKILL_NAME})을 이 프로젝트에 설치합니다.`,
     '',
-    `화면 값을 API → 원천(DB 등) → 산식까지 따라가 맞는지 점검하고 이슈 초안까지만 만드는 Claude Code 스킬입니다. 코드는 고치지 않습니다.`,
+    SKILL_SUMMARY,
     '',
-    `- .claude/skills/${SKILL_NAME}/SKILL.md ${update ? '교체' : '생성'}`,
-    ...(where ? [`- ${where}`] : []),
+    ...skillFileLines(git, update).map((l) => `- ${l}`),
     '',
-    mode === 'offer' ? '설치하지 않아도 PinProof 는 그대로 동작하고, 나중에 패널에서 설치할 수 있습니다.' : '계속할까요?',
+    '계속할까요?',
   ].join('\n');
 }
 
+/** 폴더 연결 확인 창에 보여 줄 내용 */
+export interface SetupPrompt {
+  folder: string;
+  /** 만들거나 고칠 파일 목록(describePlan) */
+  items: string[];
+  /** 처음 연결하는 폴더(WORKFLOW.md 없음)이고 스킬이 없으면 선택 설치 체크박스. 기본은 꺼짐 */
+  skill: { name: string; summary: string; files: string[] } | null;
+}
+
+/** null = 취소(아무것도 쓰지 않음) */
+export type SetupAnswer = { skill: boolean } | null;
+
 /**
  * 고른 폴더에 필요한 파일을 만들고 앱 origin과 연결한다.
- * confirm이 false를 돌려주면 아무것도 쓰지 않는다.
- * 처음 연결하는 폴더(WORKFLOW.md 가 없음)면 offerSkill 로 선택 스킬 설치를 한 번 묻는다(거절해도 연결은 된다).
+ * 만들 것이 있으면 ask 로 확인 창(파일 목록 + 선택 스킬 체크박스)을 띄우고, 취소하면 아무것도 쓰지 않는다.
  */
 export async function connectFolder(
   origin: string,
   root: FileSystemDirectoryHandle,
-  confirm: (items: string[], folderName: string) => boolean | Promise<boolean>,
-  offerSkill?: (message: string) => boolean | Promise<boolean>,
+  ask: (prompt: SetupPrompt) => SetupAnswer | Promise<SetupAnswer>,
 ): Promise<boolean> {
   const plan = await planSetup(root);
-  const items = describePlan(plan);
+  const offerSkill = plan.workflow && !(await skillStatus(root)).installed;
   if (plan.workflow || plan.exclude || plan.legacy) {
-    if (!(await confirm(items, root.name))) return false;
+    const answer = await ask({
+      folder: root.name,
+      items: describePlan(plan),
+      skill: offerSkill ? { name: SKILL_NAME, summary: SKILL_SUMMARY, files: skillFileLines(plan.git) } : null,
+    });
+    if (!answer) return false;
     await applySetup(root);
-  }
-  if (offerSkill && plan.workflow && !(await skillStatus(root)).installed && (await offerSkill(describeSkill(plan.git, 'offer')))) {
-    await installSkill(root);
+    if (offerSkill && answer.skill) await installSkill(root);
   }
   await setHandle(origin, root);
   return true;

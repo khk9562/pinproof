@@ -16,7 +16,7 @@ import {
   recordFileName,
   renderRecord,
 } from '../lib/markdown';
-import { describeSkill } from '../lib/connect';
+import { describeSkill, skillFileLines } from '../lib/connect';
 import {
   appendExclude,
   appendSkillExclude,
@@ -216,13 +216,14 @@ describe('선택 스킬 (/trace-screen-data)', () => {
     // 상위 폴더만 적혀 있는 경우는 판단하지 않고 블록을 붙인다(중복이어도 무해)
     expect(appendSkillExclude('.claude/')).not.toBeNull();
   });
-  it('확인 문구: 처음 연결 때는 선택임을, 워크트리면 무시 설정을 못 쓴다고 알린다', () => {
-    const offer = describeSkill('repo', 'offer');
-    expect(offer).toContain('(선택)');
-    expect(offer).toContain('.git/info/exclude');
-    expect(offer).toContain('나중에 패널에서 설치');
+  it('확인 문구: 설치 위치를 알리고, 워크트리면 무시 설정을 못 쓴다고 알린다', () => {
+    expect(skillFileLines('repo')).toEqual([
+      '.claude/skills/trace-screen-data/SKILL.md 생성',
+      '.git/info/exclude 에 .claude/skills/trace-screen-data/ 추가 (팀 저장소에는 올라가지 않음)',
+    ]);
+    expect(skillFileLines('none')).toHaveLength(1);
     expect(describeSkill('worktree', 'install')).toContain('워크트리라 무시 설정을 쓰지 못합니다');
-    expect(describeSkill('none', 'update')).toContain('교체');
+    expect(describeSkill('none', 'update')).toContain('SKILL.md 교체');
     expect(describeSkill('none', 'update')).not.toContain('exclude');
   });
 });

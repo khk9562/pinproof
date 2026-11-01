@@ -1,5 +1,6 @@
 import '@/lib/tokens.css';
 import { connectFolder } from '@/lib/connect';
+import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
 import { applyTheme, loadTheme } from '@/lib/theme';
 import { registerFonts } from '@/lib/fonts';
 
@@ -10,18 +11,52 @@ const status = document.getElementById('status')!;
 registerFonts();
 loadTheme().then((p) => applyTheme(document.documentElement, p));
 
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** 폴더 연결 확인 창(사이드 패널의 확인 창과 같은 내용). 취소 · Esc 면 null */
+function ask(prompt: SetupPrompt): Promise<SetupAnswer> {
+  const dialog = $<HTMLDialogElement>('setup');
+  const list = (el: HTMLElement, lines: string[]) =>
+    el.replaceChildren(
+      ...lines.map((t) => {
+        const li = document.createElement('li');
+        li.textContent = t;
+        if (t.startsWith('(')) li.className = 'muted';
+        return li;
+      }),
+    );
+  $('setup-title').textContent = `"${prompt.folder}" 폴더 연결`;
+  list($('setup-items'), prompt.items);
+  const check = $<HTMLInputElement>('skill-check');
+  check.checked = false;
+  $('setup-skill').hidden = !prompt.skill;
+  if (prompt.skill) {
+    $('skill-name').textContent = `/${prompt.skill.name}`;
+    $('skill-summary').textContent = prompt.skill.summary;
+    list($('skill-files'), prompt.skill.files);
+  }
+  return new Promise((resolve) => {
+    const done = (a: SetupAnswer) => {
+      dialog.close();
+      resolve(a);
+    };
+    $('setup-ok').onclick = () => done({ skill: !!prompt.skill && check.checked });
+    $('setup-cancel').onclick = () => done(null);
+    dialog.oncancel = (e) => {
+      e.preventDefault();
+      done(null);
+    };
+    dialog.showModal();
+  });
+}
+
 document.getElementById('pick')!.addEventListener('click', async () => {
   try {
     const root = await (window as unknown as { showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({
       mode: 'readwrite',
       id: 'pinproof-project',
     });
-    const ok = await connectFolder(
-      origin,
-      root,
-      (items, folder) => window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
-      (message) => window.confirm(message),
-    );
+    const ok = await connectFolder(origin, root, ask);
     if (!ok) {
       status.textContent = '취소했습니다.';
       return;

@@ -1,5 +1,6 @@
 import { Fragment, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { SKILL_NAME } from '@/lib/templates';
+import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -54,6 +55,7 @@ export function App() {
   return (
     <div className="panel">
       <ConnectionBar bn={bn} theme={theme} />
+      {bn.setupPrompt && <SetupDialog prompt={bn.setupPrompt} onAnswer={bn.answerSetup} />}
       {bn.pendingSaves.length > 0 && (
         <section className="pending-saves" aria-label="저장 대기 항목">
           <h2>저장 대기 {bn.pendingSaves.length}개</h2>
@@ -186,6 +188,67 @@ function ThemeButton({ theme: [pref, cycle] }: { theme: [ThemePref, () => void] 
         {THEME_ICON[pref]}
       </svg>
     </button>
+  );
+}
+
+/**
+ * 폴더 연결 확인 창: 만들 파일 목록 + (처음 연결하는 폴더면) 선택 스킬 설치 체크박스(기본 꺼짐).
+ * Esc · [취소] 는 아무것도 쓰지 않는다.
+ */
+function SetupDialog({ prompt, onAnswer }: { prompt: SetupPrompt; onAnswer: (a: SetupAnswer) => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [skill, setSkill] = useState(false);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="setup-dialog"
+      aria-labelledby="setup-title"
+      onCancel={(e) => {
+        e.preventDefault();
+        onAnswer(null);
+      }}
+    >
+      <h2 id="setup-title">
+        <span className="folder">{prompt.folder || '(선택한 폴더)'}</span> 폴더 연결
+      </h2>
+      <p className="muted small">이 폴더에 다음 작업을 합니다.</p>
+      <ul className="setup-items">
+        {prompt.items.map((t) => (
+          <li key={t} className={t.startsWith('(') ? 'muted' : undefined}>
+            {t}
+          </li>
+        ))}
+      </ul>
+      {prompt.skill && (
+        <div className="setup-skill">
+          <label>
+            <input type="checkbox" checked={skill} onChange={(e) => setSkill(e.target.checked)} />
+            <span>
+              데이터 정합성 점검 스킬도 설치 <span className="muted">(선택)</span> <code>/{prompt.skill.name}</code>
+            </span>
+          </label>
+          <p className="muted small">{prompt.skill.summary}</p>
+          <ul className="setup-items small muted">
+            {prompt.skill.files.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+          <p className="muted small">설치하지 않아도 PinProof 는 그대로 동작하고, 나중에 패널에서 설치할 수 있습니다.</p>
+        </div>
+      )}
+      <div className="setup-actions">
+        <button className="btn ghost" onClick={() => onAnswer(null)}>
+          취소
+        </button>
+        <button className="btn primary" autoFocus onClick={() => onAnswer({ skill })}>
+          연결
+        </button>
+      </div>
+    </dialog>
   );
 }
 

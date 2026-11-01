@@ -119,11 +119,26 @@ try {
     await write(await git.getDirectoryHandle('info', { create: true }), 'exclude', '# git ls-files --others\n*~\n');
     await write(root, '.gitignore', 'node_modules\n');
   });
+  // 연결 확인 창: 만들 파일 목록 + 선택 스킬 체크박스(기본 꺼짐). 취소하면 아무것도 쓰지 않는다
+  const setup = panel.locator('dialog.setup-dialog');
+  const skillBox = setup.getByRole('checkbox', { name: /데이터 정합성 점검 스킬도 설치/ });
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
+  await setup.waitFor();
+  check(
+    (await setup.locator('.setup-items').first().textContent()).includes('.pinproof/WORKFLOW.md 생성') && !(await skillBox.isChecked()),
+    '연결 확인 창에 만들 파일 목록, 스킬 체크박스는 기본 꺼짐',
+  );
+  await setup.getByRole('button', { name: '취소' }).click();
+  await setup.waitFor({ state: 'detached' });
+  check((await readOpfs('.pinproof/')) === null && (await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).isVisible()), '확인 창에서 취소하면 아무것도 만들지 않음');
+  await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
+  await skillBox.check();
+  await setup.getByRole('button', { name: '연결' }).click();
   await panel.locator('.cat.current').waitFor();
   check((await readOpfs('.pinproof/WORKFLOW.md'))?.includes('# PinProof 처리 절차'), 'WORKFLOW.md 생성');
   check((await readOpfs('.claude/commands/pinproof.md')) === null, '프로젝트에 /pinproof 커맨드를 만들지 않음');
-  check((await readOpfs('.git/info/exclude')) === '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n', '.git/info/exclude 에 .pinproof/ 추가');
+  const EXCLUDE_AFTER = '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n\n# PinProof 점검 스킬 (/trace-screen-data)\n.claude/skills/trace-screen-data/\n';
+  check((await readOpfs('.git/info/exclude')) === EXCLUDE_AFTER, '.git/info/exclude 에 .pinproof/ 와 (체크한) 스킬 폴더 추가');
   check((await readOpfs('.gitignore')) === 'node_modules\n', '팀 .gitignore 는 그대로');
   check((await readOpfs('.pinproof/WORKFLOW.md')).startsWith('<!-- pinproof-workflow v'), 'WORKFLOW.md에 버전 표시');
   check(!(await panel.locator('.wf-update').isVisible()), '최신 버전이면 업데이트 버튼 없음');
@@ -141,18 +156,20 @@ try {
   check((await readOpfs('.pinproof/WORKFLOW.md')).includes('재처리') && !(await panel.locator('.wf-update').isVisible()), '[업데이트]로 WORKFLOW.md 최신화');
 
   // ---------- 선택 스킬 (/trace-screen-data) ----------
-  // 연결 때 설치 질문에 '아니요'(OPFS 모드 기본)로 답했으므로 설치되지 않고, 패널에 설치 링크만 보인다
+  // 연결 확인 창에서 체크했으므로 설치되어 있고, 패널에는 설치 링크가 없다
   const skillMd = '.claude/skills/trace-screen-data/SKILL.md';
-  check((await readOpfs(skillMd)) === null && (await panel.locator('.skill-offer').isVisible()), '연결 때 스킬을 거절하면 설치하지 않고 패널에 설치 링크');
+  check(/^name: trace-screen-data$/m.test((await readOpfs(skillMd)) ?? '') && !(await panel.locator('.skill-offer').isVisible()), '체크하고 연결하면 .claude/skills/trace-screen-data/SKILL.md 생성');
+  // 스킬이 없는 프로젝트(지웠거나 체크하지 않음)는 패널의 [이 프로젝트에 설치]로 설치한다
+  await panel.evaluate(async () => {
+    const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('.claude')).getDirectoryHandle('skills');
+    await d.removeEntry('trace-screen-data', { recursive: true });
+  });
+  await panel.locator('.skill-offer').waitFor({ timeout: 8000 });
   panel.once('dialog', (d) => d.accept());
   await panel.locator('.skill-offer').getByRole('button', { name: '이 프로젝트에 설치' }).click();
   await panel.locator('.skill-offer').waitFor({ state: 'detached', timeout: 5000 });
-  check(/^name: trace-screen-data$/m.test((await readOpfs(skillMd)) ?? ''), '[이 프로젝트에 설치]로 .claude/skills/trace-screen-data/SKILL.md 생성');
-  check(
-    (await readOpfs('.git/info/exclude')) ===
-      '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n\n# PinProof 점검 스킬 (/trace-screen-data)\n.claude/skills/trace-screen-data/\n',
-    '스킬 폴더를 .git/info/exclude 에 추가(팀 저장소에 남지 않음)',
-  );
+  check(/^name: trace-screen-data$/m.test((await readOpfs(skillMd)) ?? ''), '[이 프로젝트에 설치]로 다시 설치');
+  check((await readOpfs('.git/info/exclude')) === EXCLUDE_AFTER, '다시 설치해도 exclude 줄은 한 번만');
   check((await readOpfs('.gitignore')) === 'node_modules\n' && !(await panel.locator('.skill-update').isVisible()), '팀 .gitignore 그대로, 최신 스킬이면 업데이트 안내 없음');
   // 버전 표시 없는 파일(사용자가 직접 고친 것)은 덮어쓰기를 권하지 않는다
   await panel.evaluate(async (p) => {
