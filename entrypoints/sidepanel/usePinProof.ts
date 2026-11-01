@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectFolder, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
+import { connectFolder, describeSkill, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
 import * as db from '@/lib/db';
 import {
   archiveRecord,
@@ -7,6 +7,7 @@ import {
   deleteRecord,
   ensurePermission,
   hasLegacy,
+  installSkill,
   listItems,
   listRecords,
   migrateLegacy,
@@ -14,12 +15,14 @@ import {
   nextItemId,
   readCategories,
   renameItemCategory,
+  skillStatus,
   updateWorkflow,
   workflowStatus,
   writeCategories,
   writeItem,
 } from '@/lib/fs';
-import type { WorkflowStatus } from '@/lib/fs';
+import type { SkillStatus, WorkflowStatus } from '@/lib/fs';
+import { SKILL_NAME } from '@/lib/templates';
 import { copyPrompt, itemFileName, itemsPrompt, padId, pagePath, sameTarget } from '@/lib/markdown';
 import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
@@ -31,6 +34,8 @@ const params = new URLSearchParams(location.search);
 /** e2e 테스트용: ?tab=<id> 로 대상 탭 고정, ?opfs=1 로 폴더 대신 OPFS 사용 */
 const FIXED_TAB = params.get('tab') ? Number(params.get('tab')) : null;
 const USE_OPFS = params.get('opfs') === '1';
+/** e2e 테스트용: ?skill=1 이면 폴더 연결 때 선택 스킬 설치 질문에 '예'로 답한다(OPFS 모드는 확인 창 없이 진행) */
+const E2E_SKILL = params.get('skill') === '1';
 
 function nowStamp(): string {
   const d = new Date();
@@ -88,6 +93,8 @@ export function usePinProof() {
   const [workflow, setWorkflow] = useState<WorkflowStatus | null>(null);
   /** 이전 이름(BugNotes)의 .bugnotes/ 폴더가 남아 있으면 [옮기기] 버튼을 보여준다 */
   const [legacy, setLegacy] = useState(false);
+  /** 선택 스킬(/trace-screen-data) 설치 상태. 없으면 [설치], 옛 버전이면 [업데이트] */
+  const [skill, setSkill] = useState<SkillStatus | null>(null);
 
   /** localhost 가 아닌 탭에서, 사용자가 이 사이트를 켜 두었는지 */
   const [siteAllowed, setSiteAllowed] = useState(false);
@@ -279,6 +286,7 @@ export function usePinProof() {
       setRecords(await listRecords(h));
       setWorkflow(await workflowStatus(h));
       setLegacy(await hasLegacy(h));
+      setSkill(await skillStatus(h));
     } catch (e) {
       say(`기록 목록을 읽지 못했습니다: ${String(e)}`, 'warn');
     }
@@ -788,8 +796,11 @@ export function usePinProof() {
       await chrome.tabs.create({ url: chrome.runtime.getURL(`/connect.html?origin=${encodeURIComponent(origin)}`) });
       return;
     }
-    const ok = await connectFolder(origin, root, (items, folder) =>
-      USE_OPFS ? true : window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
+    const ok = await connectFolder(
+      origin,
+      root,
+      (items, folder) => (USE_OPFS ? true : window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`)),
+      (message) => (USE_OPFS ? E2E_SKILL : window.confirm(message)),
     );
     if (ok) {
       await loadOrigin();
@@ -821,6 +832,29 @@ export function usePinProof() {
       say(`업데이트 실패: ${String(e)}`, 'warn');
     }
   }, [workflow, say]);
+
+  /** 선택 스킬 설치(없을 때) 또는 새 버전으로 교체(옛 버전일 때). 한 번 묻는다 */
+  const setupSkill = useCallback(async () => {
+    const h = handleRef.current;
+    if (!h) return;
+    const update = skill?.installed === true;
+    const git = (await h.getDirectoryHandle('.git').then(
+      () => 'repo' as const,
+      () => h.getFileHandle('.git').then(() => 'worktree' as const, () => 'none' as const),
+    ));
+    if (!window.confirm(describeSkill(git, update ? 'update' : 'install'))) return;
+    try {
+      const result = await installSkill(h);
+      setSkill(await skillStatus(h));
+      say(
+        `/${SKILL_NAME} 스킬을 ${update ? '업데이트' : '설치'}했습니다.` +
+          (result === 'worktree' ? ' 워크트리라 무시 설정은 쓰지 않았습니다. 커밋하지 않도록 주의하세요.' : ''),
+        result === 'worktree' ? 'warn' : 'ok',
+      );
+    } catch (e) {
+      say(`스킬 ${update ? '업데이트' : '설치'} 실패: ${String(e)}`, 'warn');
+    }
+  }, [skill, say]);
 
   const moveLegacy = useCallback(async () => {
     const h = handleRef.current;
@@ -986,6 +1020,8 @@ export function usePinProof() {
     upgradeWorkflow,
     legacy,
     moveLegacy,
+    skill,
+    setupSkill,
     connect,
     reconnect,
     disconnect,

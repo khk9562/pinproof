@@ -140,6 +140,31 @@ try {
   await panel.waitForTimeout(500);
   check((await readOpfs('.pinproof/WORKFLOW.md')).includes('재처리') && !(await panel.locator('.wf-update').isVisible()), '[업데이트]로 WORKFLOW.md 최신화');
 
+  // ---------- 선택 스킬 (/trace-screen-data) ----------
+  // 연결 때 설치 질문에 '아니요'(OPFS 모드 기본)로 답했으므로 설치되지 않고, 패널에 설치 링크만 보인다
+  const skillMd = '.claude/skills/trace-screen-data/SKILL.md';
+  check((await readOpfs(skillMd)) === null && (await panel.locator('.skill-offer').isVisible()), '연결 때 스킬을 거절하면 설치하지 않고 패널에 설치 링크');
+  panel.once('dialog', (d) => d.accept());
+  await panel.locator('.skill-offer').getByRole('button', { name: '이 프로젝트에 설치' }).click();
+  await panel.locator('.skill-offer').waitFor({ state: 'detached', timeout: 5000 });
+  check(/^name: trace-screen-data$/m.test((await readOpfs(skillMd)) ?? ''), '[이 프로젝트에 설치]로 .claude/skills/trace-screen-data/SKILL.md 생성');
+  check(
+    (await readOpfs('.git/info/exclude')) ===
+      '# git ls-files --others\n*~\n\n# PinProof\n.pinproof/\n\n# PinProof 점검 스킬 (/trace-screen-data)\n.claude/skills/trace-screen-data/\n',
+    '스킬 폴더를 .git/info/exclude 에 추가(팀 저장소에 남지 않음)',
+  );
+  check((await readOpfs('.gitignore')) === 'node_modules\n' && !(await panel.locator('.skill-update').isVisible()), '팀 .gitignore 그대로, 최신 스킬이면 업데이트 안내 없음');
+  // 버전 표시 없는 파일(사용자가 직접 고친 것)은 덮어쓰기를 권하지 않는다
+  await panel.evaluate(async (p) => {
+    let d = await navigator.storage.getDirectory();
+    for (const name of p.split('/').slice(0, -1)) d = await d.getDirectoryHandle(name);
+    const w = await (await d.getFileHandle('SKILL.md')).createWritable();
+    await w.write('---\nname: trace-screen-data\n---\n# 직접 고친 스킬\n');
+    await w.close();
+  }, skillMd);
+  await panel.waitForTimeout(5600);
+  check(!(await panel.locator('.skill-update').isVisible()) && !(await panel.locator('.skill-offer').isVisible()), '직접 고친 스킬 파일은 업데이트·설치 안내 없음');
+
   // ---------- 페이지 위 툴바 (패널이 열려 있으면 뜬다) ----------
   const ov = (fn, arg) => app.locator('pinproof-overlay').evaluate(fn, arg);
   const tool = (name) => app.locator('pinproof-overlay .tb .tools').getByRole('button', { name: new RegExp(`^${name}`) });

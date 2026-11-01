@@ -31,6 +31,7 @@ npm run build
    - 아이콘으로 패널을 열어야 그 탭에서 **스크린샷**이 허용됩니다(Chrome의 `activeTab` 규칙). 같은 앱 안에서 페이지를 옮겨도 유지됩니다.
 2. **프로젝트 폴더 연결** → 앱의 저장소 루트 폴더를 고릅니다. 만들 파일 목록을 보여주고 동의를 받습니다.
    - `.pinproof/WORKFLOW.md` (공통 처리 절차)
+   - (선택) 데이터 정합성 점검 스킬 `.claude/skills/trace-screen-data/` — 따로 한 번 묻습니다. "[데이터 정합성 점검 스킬](#데이터-정합성-점검-스킬-선택)" 참고
    - git 저장소면 `.git/info/exclude`에 `.pinproof/` 추가. 이 컴퓨터에만 적용되고 모든 워크트리가 함께 씁니다. 팀이 함께 쓰는 `.gitignore`와 프로젝트의 `.claude/commands/`는 건드리지 않습니다
    - git 워크트리 폴더(`.git`이 파일)를 고르면 무시 설정을 쓸 수 없으니, 메인 저장소의 `.git/info/exclude`에 `.pinproof/`가 있는지 확인하세요
    - `/pinproof` 커맨드는 아래 "[/pinproof 커맨드 설치](#pinproof-커맨드-설치-한-번만)"대로 개인 설정에 한 번 둡니다
@@ -108,28 +109,27 @@ claude.ai나 다른 에이전트에는 패널의 **프롬프트 복사**로 붙�
 
 ### 데이터 정합성 점검 스킬 (선택)
 
-`/pinproof`가 담은 항목을 하나씩 **고치는** 절차라면, `/pinproof-audit`는 화면의 값을 **API → 원천(DB 등) → 산식**까지 따라가 맞는지 **점검만** 하는 Claude Code 스킬입니다([skills/pinproof-audit/SKILL.md](skills/pinproof-audit/SKILL.md)). 코드를 고치지 않고 발견 목록과 이슈 초안까지만 만들며, `.pinproof/` 항목은 읽기만 합니다. 익스텐션은 이 스킬을 설치하지 않으니 필요한 사람만 아래 중 하나로 둡니다.
+`/pinproof`가 담은 항목을 하나씩 **고치는** 절차라면, `/trace-screen-data`는 화면의 값을 **API → 원천(DB 등) → 산식**까지 따라가 맞는지 **점검만** 하는 Claude Code 스킬입니다([skills/trace-screen-data/SKILL.md](skills/trace-screen-data/SKILL.md)). 코드를 고치지 않고 발견 목록과 이슈 초안까지만 만들며, `.pinproof/` 항목은 읽기만 합니다. 필요한 프로젝트에만 설치합니다.
 
-개인 설정에 두기(모든 프로젝트에서 사용, 팀 저장소에 흔적 없음):
-
-```bash
-mkdir -p ~/.claude/skills/pinproof-audit && curl -fsSL https://raw.githubusercontent.com/khk9562/pinproof/main/skills/pinproof-audit/SKILL.md -o ~/.claude/skills/pinproof-audit/SKILL.md
-```
-
-특정 프로젝트에만 두기(앱 저장소 루트에서 실행. 팀과 함께 쓰려면 커밋하고, 나만 쓰려면 `.git/info/exclude`에 `.claude/skills/pinproof-audit/`를 넣으세요):
-
-```bash
-mkdir -p .claude/skills/pinproof-audit && curl -fsSL https://raw.githubusercontent.com/khk9562/pinproof/main/skills/pinproof-audit/SKILL.md -o .claude/skills/pinproof-audit/SKILL.md
-```
+- **폴더를 처음 연결할 때**: 만들 파일 목록에 동의한 뒤 "점검 스킬도 설치할까요? (선택)"를 한 번 묻습니다. 취소하면 설치하지 않고 연결은 그대로 됩니다.
+- **이미 연결한 프로젝트**: 패널 연결 줄 아래 **선택: 데이터 정합성 점검 스킬 `/trace-screen-data` 이 프로젝트에 설치**를 누릅니다.
+- 설치하면 `.claude/skills/trace-screen-data/SKILL.md`를 만들고, git 저장소면 `.git/info/exclude`에 그 폴더를 넣어 팀 저장소에는 올라가지 않습니다(팀과 함께 쓰려면 exclude 줄을 지우고 커밋하세요). git 워크트리 폴더면 무시 설정을 쓸 수 없으니 커밋하지 않도록 주의하세요.
+- 익스텐션에 새 버전 스킬이 들어오면 패널에 **점검 스킬 새 버전 · [업데이트]**가 뜹니다(자동으로 바꾸지 않음). 파일 안의 `<!-- pinproof-skill vN -->` 표시를 지우면 직접 관리하는 파일로 보고 업데이트를 권하지 않습니다.
 
 ```text
-/pinproof-audit                  # 대기 항목을 보여 주고 전체 점검 또는 카테고리로 좁히기
-/pinproof-audit 데이터 정합성     # 그 카테고리 항목을 출발점으로, 같은 데이터를 쓰는 다른 화면까지 대조
-/pinproof-audit 13 14            # 13·14번 항목을 출발점으로 대조
-/pinproof-audit 주문 목록 화면    # 그 화면만 (.pinproof/ 가 없어도 동작)
+/trace-screen-data                  # 대기 항목을 보여 주고 전체 점검 또는 카테고리로 좁히기
+/trace-screen-data 데이터 정합성     # 그 카테고리 항목을 출발점으로, 같은 데이터를 쓰는 다른 화면까지 대조
+/trace-screen-data 13 14            # 13·14번 항목을 출발점으로 대조
+/trace-screen-data 주문 목록 화면    # 그 화면만 (.pinproof/ 가 없어도 동작)
 ```
 
-점검이 끝나면 실재·잠재 판정과 심각도별 발견 표, 이슈 초안이 나오고, 이슈로 만들지 `/pinproof <번호>`로 처리할지 묻습니다. 스킬을 고쳐 쓰고 싶으면 설치한 `SKILL.md`를 직접 수정하세요. 다시 설치하면 덮어씁니다.
+점검이 끝나면 실재·잠재 판정과 심각도별 발견 표, 이슈 초안이 나오고, 이슈로 만들지 `/pinproof <번호>`로 처리할지 묻습니다.
+
+모든 프로젝트에서 쓰고 싶으면 익스텐션 대신 개인 설정에 직접 둘 수도 있습니다:
+
+```bash
+mkdir -p ~/.claude/skills/trace-screen-data && curl -fsSL https://raw.githubusercontent.com/khk9562/pinproof/main/skills/trace-screen-data/SKILL.md -o ~/.claude/skills/trace-screen-data/SKILL.md
+```
 
 ### 처리 절차(WORKFLOW.md) 업데이트
 
@@ -156,7 +156,7 @@ mkdir -p .claude/skills/pinproof-audit && curl -fsSL https://raw.githubuserconte
 └ .git/info/exclude                 # ".pinproof/" 한 줄 (내 컴퓨터에만)
 
 ~/.claude/commands/pinproof.md      # /pinproof 커맨드 (개인 설정)
-~/.claude/skills/pinproof-audit/    # /pinproof-audit 점검 스킬 (선택, 프로젝트 .claude/skills/ 에 둘 수도 있음)
+프로젝트/.claude/skills/trace-screen-data/SKILL.md   # /trace-screen-data 점검 스킬 (선택 설치, exclude 로 git 에서 빠짐)
 ```
 
 - md의 `## 처리 기록` 아래는 익스텐션이 절대 덮어쓰지 않습니다. 메모를 고치거나 카테고리를 옮겨 항목을 다시 써도 처리 기록은 남고, 파일에 이미 `status: 완료`가 있으면 그대로 둡니다.

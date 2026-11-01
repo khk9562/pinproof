@@ -16,7 +16,17 @@ import {
   recordFileName,
   renderRecord,
 } from '../lib/markdown';
-import { appendExclude, EXCLUDE_BLOCK } from '../lib/templates';
+import { describeSkill } from '../lib/connect';
+import {
+  appendExclude,
+  appendSkillExclude,
+  EXCLUDE_BLOCK,
+  SKILL_EXCLUDE_BLOCK,
+  SKILL_MD,
+  SKILL_NAME,
+  SKILL_VERSION,
+  skillVersionOf,
+} from '../lib/templates';
 import { BugRecord } from '../lib/types';
 
 const record: BugRecord = {
@@ -185,6 +195,35 @@ describe('appendExclude', () => {
     // 사용자가 직접 다른 주석과 함께 적어 둔 줄도 인정한다
     expect(appendExclude('# 개인 도구\n  /.pinproof  \n')).toBeNull();
     expect(appendExclude('.pinproof-old/')).not.toBeNull();
+  });
+});
+
+describe('선택 스킬 (/trace-screen-data)', () => {
+  it('묶인 SKILL.md 의 name 과 버전 표시가 설치 이름 · 버전과 같다', () => {
+    expect(SKILL_MD.startsWith('---\n')).toBe(true);
+    expect(SKILL_MD).toMatch(new RegExp(`^name: ${SKILL_NAME}$`, 'm'));
+    expect(skillVersionOf(SKILL_MD)).toBe(SKILL_VERSION);
+  });
+  it('버전 표시가 없는 파일은 0(직접 만든 파일로 보고 업데이트를 권하지 않음)', () => {
+    expect(skillVersionOf('---\nname: trace-screen-data\n---\n# 내 스킬')).toBe(0);
+    expect(skillVersionOf('<!-- pinproof-skill v3 -->')).toBe(3);
+  });
+  it('exclude 에 스킬 폴더를 한 번만 넣는다(.pinproof 줄과 따로)', () => {
+    expect(appendSkillExclude(null)).toBe(SKILL_EXCLUDE_BLOCK);
+    expect(appendSkillExclude(EXCLUDE_BLOCK)).toBe(`${EXCLUDE_BLOCK}\n${SKILL_EXCLUDE_BLOCK}`);
+    expect(appendSkillExclude(`a\n${SKILL_EXCLUDE_BLOCK}`)).toBeNull();
+    expect(appendSkillExclude('/.claude/skills/trace-screen-data\n')).toBeNull();
+    // 상위 폴더만 적혀 있는 경우는 판단하지 않고 블록을 붙인다(중복이어도 무해)
+    expect(appendSkillExclude('.claude/')).not.toBeNull();
+  });
+  it('확인 문구: 처음 연결 때는 선택임을, 워크트리면 무시 설정을 못 쓴다고 알린다', () => {
+    const offer = describeSkill('repo', 'offer');
+    expect(offer).toContain('(선택)');
+    expect(offer).toContain('.git/info/exclude');
+    expect(offer).toContain('나중에 패널에서 설치');
+    expect(describeSkill('worktree', 'install')).toContain('워크트리라 무시 설정을 쓰지 못합니다');
+    expect(describeSkill('none', 'update')).toContain('교체');
+    expect(describeSkill('none', 'update')).not.toContain('exclude');
   });
 });
 

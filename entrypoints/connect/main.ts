@@ -16,8 +16,11 @@ document.getElementById('pick')!.addEventListener('click', async () => {
       mode: 'readwrite',
       id: 'pinproof-project',
     });
-    const ok = await connectFolder(origin, root, (items, folder) =>
-      window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
+    const ok = await connectFolder(
+      origin,
+      root,
+      (items, folder) => window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
+      (message) => window.confirm(message),
     );
     if (!ok) {
       status.textContent = '취소했습니다.';

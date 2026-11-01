@@ -1,4 +1,5 @@
 import { Fragment, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { SKILL_NAME } from '@/lib/templates';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -248,6 +249,24 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
             업데이트
           </button>
         </div>
+      )}
+      {bn.connection === 'granted' && bn.skill?.installed && bn.skill.current > 0 && bn.skill.current < bn.skill.latest && (
+        <div className="wf-update skill-update">
+          <span>
+            점검 스킬(<code>/{SKILL_NAME}</code>) 새 버전 v{bn.skill.latest}이 있습니다 · 현재 v{bn.skill.current}
+          </span>
+          <button className="btn primary" onClick={bn.setupSkill}>
+            업데이트
+          </button>
+        </div>
+      )}
+      {bn.connection === 'granted' && bn.skill && !bn.skill.installed && (
+        <p className="skill-offer muted small">
+          선택: 데이터 정합성 점검 스킬 <code>/{SKILL_NAME}</code>{' '}
+          <button className="link" onClick={bn.setupSkill} title={`.claude/skills/${SKILL_NAME}/ 에 설치합니다. 화면 값을 API · 원천까지 대조해 이슈 초안을 만드는 Claude Code 스킬`}>
+            이 프로젝트에 설치
+          </button>
+        </p>
       )}
       {bn.connection === 'none' && (
         <p className="muted small">
