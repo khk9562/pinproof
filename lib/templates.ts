@@ -86,8 +86,39 @@ const EXCLUDE_LINES = ['.pinproof', '.pinproof/', '/.pinproof', '/.pinproof/'];
 
 /** exclude 에 .pinproof 줄이 이미 있으면 null, 없으면 블록을 붙인 전체 내용 */
 export function appendExclude(existing: string | null): string | null {
-  if (existing?.split('\n').some((l) => EXCLUDE_LINES.includes(l.trim()))) return null;
-  if (!existing) return EXCLUDE_BLOCK;
+  return appendExcludeBlock(existing, EXCLUDE_LINES, EXCLUDE_BLOCK);
+}
+
+/** lines 중 하나라도 이미 있으면 null, 없으면 block 을 붙인 전체 내용 */
+function appendExcludeBlock(existing: string | null, lines: string[], block: string): string | null {
+  if (existing?.split('\n').some((l) => lines.includes(l.trim()))) return null;
+  if (!existing) return block;
   const sep = existing.endsWith('\n') ? '\n' : '\n\n';
-  return `${existing}${sep}${EXCLUDE_BLOCK}`;
+  return `${existing}${sep}${block}`;
+}
+
+// ---------- 선택 스킬: /trace-screen-data ----------
+
+/** 저장소의 skills/trace-screen-data/SKILL.md 를 그대로 묶어 프로젝트에 쓴다 */
+export { default as SKILL_MD } from '../skills/trace-screen-data/SKILL.md?raw';
+export const SKILL_NAME = 'trace-screen-data';
+/** 프로젝트 안 설치 위치(루트 기준) */
+export const SKILL_PATH = ['.claude', 'skills', SKILL_NAME];
+export const SKILL_VERSION = 1;
+
+/** SKILL.md 안의 버전 표시. 표시가 없으면(직접 만든 파일 등) 0 */
+export function skillVersionOf(text: string): number {
+  const m = text.match(/<!-- pinproof-skill v(\d+) -->/);
+  return m ? Number(m[1]) : 0;
+}
+
+const SKILL_DIR = `.claude/skills/${SKILL_NAME}`;
+const SKILL_EXCLUDE_LINES = [SKILL_DIR, `${SKILL_DIR}/`, `/${SKILL_DIR}`, `/${SKILL_DIR}/`];
+export const SKILL_EXCLUDE_BLOCK = `# PinProof 점검 스킬 (/${SKILL_NAME})
+${SKILL_DIR}/
+`;
+
+/** exclude 에 스킬 폴더 줄이 이미 있으면 null, 없으면 블록을 붙인 전체 내용 */
+export function appendSkillExclude(existing: string | null): string | null {
+  return appendExcludeBlock(existing, SKILL_EXCLUDE_LINES, SKILL_EXCLUDE_BLOCK);
 }

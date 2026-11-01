@@ -1,5 +1,5 @@
 import '@/lib/tokens.css';
-import { connectFolder } from '@/lib/connect';
+import { connectFolder, LEGACY_CONFIRM } from '@/lib/connect';
 import { applyTheme, loadTheme } from '@/lib/theme';
 import { registerFonts } from '@/lib/fonts';
 
@@ -10,15 +10,17 @@ const status = document.getElementById('status')!;
 registerFonts();
 loadTheme().then((p) => applyTheme(document.documentElement, p));
 
+/** 사이드 패널에서 체크하고 왔으면 그대로 체크해 둔다 */
+const skill = document.getElementById('skill') as HTMLInputElement;
+skill.checked = new URLSearchParams(location.search).get('skill') === '1';
+
 document.getElementById('pick')!.addEventListener('click', async () => {
   try {
     const root = await (window as unknown as { showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({
       mode: 'readwrite',
       id: 'pinproof-project',
     });
-    const ok = await connectFolder(origin, root, (items, folder) =>
-      window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
-    );
+    const ok = await connectFolder(origin, root, { skill: skill.checked, confirmLegacy: () => window.confirm(LEGACY_CONFIRM) });
     if (!ok) {
       status.textContent = '취소했습니다.';
       return;

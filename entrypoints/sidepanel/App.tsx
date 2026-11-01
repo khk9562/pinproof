@@ -1,4 +1,5 @@
 import { Fragment, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { SKILL_NAME } from '@/lib/templates';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -190,6 +191,8 @@ function ThemeButton({ theme: [pref, cycle] }: { theme: [ThemePref, () => void] 
 
 function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => void] }) {
   const host = bn.origin!.replace(/^https?:\/\//, '');
+  /** 연결 버튼 아래 체크박스: 연결하면서 점검 스킬도 설치(기본 꺼짐) */
+  const [withSkill, setWithSkill] = useState(false);
   return (
     <section className="conn">
       <div className="conn-row">
@@ -215,9 +218,15 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
         </p>
       )}
       {bn.connection === 'none' && (
-        <button className="btn primary block" onClick={bn.connect}>
-          프로젝트 폴더 연결
-        </button>
+        <>
+          <button className="btn primary block" onClick={() => bn.connect(withSkill)}>
+            프로젝트 폴더 연결
+          </button>
+          <label className="connect-skill small">
+            <input type="checkbox" checked={withSkill} onChange={(e) => setWithSkill(e.target.checked)} />
+            점검 스킬 <code>/{SKILL_NAME}</code> 도 설치 <span className="muted">(선택)</span>
+          </label>
+        </>
       )}
       {bn.connection === 'prompt' && (
         <div className="conn-actions">
@@ -249,10 +258,28 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
           </button>
         </div>
       )}
+      {bn.connection === 'granted' && bn.skill?.installed && bn.skill.current > 0 && bn.skill.current < bn.skill.latest && (
+        <div className="wf-update skill-update">
+          <span>
+            점검 스킬(<code>/{SKILL_NAME}</code>) 새 버전 v{bn.skill.latest}이 있습니다 · 현재 v{bn.skill.current}
+          </span>
+          <button className="btn primary" onClick={bn.setupSkill}>
+            업데이트
+          </button>
+        </div>
+      )}
+      {bn.connection === 'granted' && bn.skill && !bn.skill.installed && (
+        <p className="skill-offer muted small">
+          선택: 데이터 정합성 점검 스킬 <code>/{SKILL_NAME}</code>{' '}
+          <button className="link" onClick={bn.setupSkill} title={`.claude/skills/${SKILL_NAME}/ 에 설치합니다. 화면 값을 API · 원천까지 대조해 이슈 초안을 만드는 Claude Code 스킬`}>
+            이 프로젝트에 설치
+          </button>
+        </p>
+      )}
       {bn.connection === 'none' && (
         <p className="muted small">
           고른 폴더에 <code>.pinproof/</code>를 만들고, git 저장소면 <code>.git/info/exclude</code>에 추가합니다(팀{' '}
-          <code>.gitignore</code>는 건드리지 않음). 만들기 전에 목록을 보여드립니다.
+          <code>.gitignore</code>는 건드리지 않음). 스킬도 <code>.claude/skills/</code>에 두고 exclude 로 git 에서 뺍니다.
         </p>
       )}
     </section>

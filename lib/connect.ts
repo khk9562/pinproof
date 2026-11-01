@@ -1,34 +1,56 @@
 import { setHandle } from './db';
-import { applySetup, planSetup, SetupPlan } from './fs';
+import { applySetup, installSkill, planSetup, SetupPlan, skillStatus } from './fs';
+import { SKILL_NAME } from './templates';
 
-export function describePlan(plan: SetupPlan): string[] {
-  const items: string[] = [];
-  if (plan.legacy) items.push('이전 이름의 .bugnotes/ 기록·스크린샷을 .pinproof/ 로 옮기고, 이전 커맨드(/bugnotes) 정리');
-  if (plan.workflow) items.push('.pinproof/WORKFLOW.md 생성 (공통 처리 절차)');
-  if (plan.exclude) items.push('.git/info/exclude 에 .pinproof/ 추가 (이 컴퓨터에만 적용, 팀 .gitignore 는 건드리지 않음)');
-  if (plan.git === 'worktree') {
-    items.push('(git 워크트리라 무시 설정을 쓰지 않습니다. 메인 저장소의 .git/info/exclude 에 .pinproof/ 가 있는지 확인하세요)');
-  }
-  if (plan.git === 'none') items.push('(git 저장소가 아니어서 무시 설정은 건드리지 않습니다)');
-  items.push('(/pinproof 커맨드는 프로젝트에 만들지 않습니다. ~/.claude/commands/pinproof.md 에 한 번 두세요. README 참고)');
-  return items;
+/** 스킬 설치 위치와 git 무시 설정 안내(패널의 설치 · 업데이트 확인 창) */
+export function skillFileLines(git: SetupPlan['git'], update = false): string[] {
+  const where =
+    git === 'repo'
+      ? `.git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 추가 (팀 저장소에는 올라가지 않음)`
+      : git === 'worktree'
+        ? `git 워크트리라 무시 설정을 쓰지 못합니다. 메인 저장소의 .git/info/exclude 에 .claude/skills/${SKILL_NAME}/ 를 넣거나, 커밋하지 않도록 주의하세요`
+        : '';
+  return [`.claude/skills/${SKILL_NAME}/SKILL.md ${update ? '교체' : '생성'}`, ...(where ? [where] : [])];
+}
+
+export const SKILL_SUMMARY = '화면 값을 API → 원천(DB 등) → 산식까지 따라가 맞는지 점검하고 이슈 초안까지만 만드는 Claude Code 스킬입니다. 코드는 고치지 않습니다.';
+
+/** 패널의 [이 프로젝트에 설치] · [업데이트] 확인 창 문구 */
+export function describeSkill(git: SetupPlan['git'], mode: 'install' | 'update'): string {
+  const update = mode === 'update';
+  return [
+    update
+      ? `데이터 정합성 점검 스킬(/${SKILL_NAME})을 새 버전으로 교체합니다. 이 파일을 직접 고쳤다면 그 내용은 사라집니다.`
+      : `데이터 정합성 점검 스킬(/${SKILL_NAME})을 이 프로젝트에 설치합니다.`,
+    '',
+    SKILL_SUMMARY,
+    '',
+    ...skillFileLines(git, update).map((l) => `- ${l}`),
+    '',
+    '계속할까요?',
+  ].join('\n');
+}
+
+/** 이전 이름(.bugnotes/)을 옮길 때만 묻는 문구 — 옮긴 뒤 .bugnotes/ 와 /bugnotes 커맨드를 지우므로 */
+export const LEGACY_CONFIRM =
+  '이전 이름(BugNotes)의 .bugnotes/ 폴더가 있습니다. .pinproof/ 로 옮기고 연결할까요?\n\n- 기록·스크린샷·보관함 복사 (이미 있는 파일은 덮어쓰지 않음)\n- 모두 옮기면 .bugnotes/ 와 이전 커맨드 /bugnotes 삭제';
+
+export interface ConnectOptions {
+  /** 연결 버튼 아래 체크박스: 점검 스킬도 설치 */
+  skill: boolean;
+  /** .bugnotes/ 가 있을 때만 부른다. false 면 아무것도 쓰지 않는다 */
+  confirmLegacy: () => boolean | Promise<boolean>;
 }
 
 /**
- * 고른 폴더에 필요한 파일을 만들고 앱 origin과 연결한다.
- * confirm이 false를 돌려주면 아무것도 쓰지 않는다.
+ * 고른 폴더에 필요한 파일(.pinproof/ · exclude)을 만들고 앱 origin과 연결한다. 연결 버튼을 누른 것이 동의다(확인 창 없음).
+ * skill 이면 점검 스킬도 설치한다(이미 있으면 그대로).
  */
-export async function connectFolder(
-  origin: string,
-  root: FileSystemDirectoryHandle,
-  confirm: (items: string[], folderName: string) => boolean | Promise<boolean>,
-): Promise<boolean> {
+export async function connectFolder(origin: string, root: FileSystemDirectoryHandle, opts: ConnectOptions): Promise<boolean> {
   const plan = await planSetup(root);
-  const items = describePlan(plan);
-  if (plan.workflow || plan.exclude || plan.legacy) {
-    if (!(await confirm(items, root.name))) return false;
-    await applySetup(root);
-  }
+  if (plan.legacy && !(await opts.confirmLegacy())) return false;
+  if (plan.workflow || plan.exclude || plan.legacy) await applySetup(root);
+  if (opts.skill && !(await skillStatus(root)).installed) await installSkill(root);
   await setHandle(origin, root);
   return true;
 }

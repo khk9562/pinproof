@@ -21,12 +21,16 @@
       button:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 3px; }
       code { font-family: var(--font-mono); }
       #status { margin-top: 16px; color: var(--color-ink-soft); font-size: var(--text-small); }
+      .skill { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: var(--text-small); cursor: pointer; }
+      .skill input { margin: 0; accent-color: var(--color-ink); width: 16px; height: 16px; flex: none; }
+      .muted { color: var(--color-ink-soft); }
     </style>
   </head>
   <body>
     <h2>프로젝트 폴더 연결</h2>
     <p><code id="origin"></code> 앱의 기록을 저장할 프로젝트 폴더를 고르세요.</p>
     <button id="pick">폴더 선택</button>
+    <label class="skill"><input type="checkbox" id="skill" /> 점검 스킬 <code>/trace-screen-data</code> 도 설치 <span class="muted">(선택)</span></label>
     <p id="status" role="status"></p>
     <script type="module" src="./main.ts"></script>
   </body>
