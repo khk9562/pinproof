@@ -1,6 +1,5 @@
 import '@/lib/tokens.css';
-import { connectFolder } from '@/lib/connect';
-import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
+import { connectFolder, LEGACY_CONFIRM } from '@/lib/connect';
 import { applyTheme, loadTheme } from '@/lib/theme';
 import { registerFonts } from '@/lib/fonts';
 
@@ -11,43 +10,9 @@ const status = document.getElementById('status')!;
 registerFonts();
 loadTheme().then((p) => applyTheme(document.documentElement, p));
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-
-/** 폴더 연결 확인 창(사이드 패널의 확인 창과 같은 내용). 취소 · Esc 면 null */
-function ask(prompt: SetupPrompt): Promise<SetupAnswer> {
-  const dialog = $<HTMLDialogElement>('setup');
-  const list = (el: HTMLElement, lines: string[]) =>
-    el.replaceChildren(
-      ...lines.map((t) => {
-        const li = document.createElement('li');
-        li.textContent = t;
-        if (t.startsWith('(')) li.className = 'muted';
-        return li;
-      }),
-    );
-  $('setup-title').textContent = `"${prompt.folder}" 폴더 연결`;
-  list($('setup-items'), prompt.items);
-  const check = $<HTMLInputElement>('skill-check');
-  check.checked = false;
-  $('setup-skill').hidden = !prompt.skill;
-  if (prompt.skill) {
-    $('skill-name').textContent = `/${prompt.skill.name}`;
-    $('skill-note').textContent = prompt.skill.note;
-  }
-  return new Promise((resolve) => {
-    const done = (a: SetupAnswer) => {
-      dialog.close();
-      resolve(a);
-    };
-    $('setup-ok').onclick = () => done({ skill: !!prompt.skill && check.checked });
-    $('setup-cancel').onclick = () => done(null);
-    dialog.oncancel = (e) => {
-      e.preventDefault();
-      done(null);
-    };
-    dialog.showModal();
-  });
-}
+/** 사이드 패널에서 체크하고 왔으면 그대로 체크해 둔다 */
+const skill = document.getElementById('skill') as HTMLInputElement;
+skill.checked = new URLSearchParams(location.search).get('skill') === '1';
 
 document.getElementById('pick')!.addEventListener('click', async () => {
   try {
@@ -55,7 +20,7 @@ document.getElementById('pick')!.addEventListener('click', async () => {
       mode: 'readwrite',
       id: 'pinproof-project',
     });
-    const ok = await connectFolder(origin, root, ask);
+    const ok = await connectFolder(origin, root, { skill: skill.checked, confirmLegacy: () => window.confirm(LEGACY_CONFIRM) });
     if (!ok) {
       status.textContent = '취소했습니다.';
       return;

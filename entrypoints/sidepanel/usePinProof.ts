@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectFolder, describeSkill, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
-import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
+import { connectFolder, describeSkill, isSupportedUrl, LEGACY_CONFIRM, routeOf, sitePattern } from '@/lib/connect';
 import * as db from '@/lib/db';
 import {
   archiveRecord,
@@ -94,14 +93,6 @@ export function usePinProof() {
   const [legacy, setLegacy] = useState(false);
   /** 선택 스킬(/trace-screen-data) 설치 상태. 없으면 [설치], 옛 버전이면 [업데이트] */
   const [skill, setSkill] = useState<SkillStatus | null>(null);
-  /** 폴더 연결 확인 창(파일 목록 + 선택 스킬 체크박스). 답하면 connectFolder 가 이어서 진행한다 */
-  const [setupPrompt, setSetupPrompt] = useState<SetupPrompt | null>(null);
-  const setupAnswer = useRef<((a: SetupAnswer) => void) | null>(null);
-  const answerSetup = useCallback((a: SetupAnswer) => {
-    setupAnswer.current?.(a);
-    setupAnswer.current = null;
-    setSetupPrompt(null);
-  }, []);
 
   /** localhost 가 아닌 탭에서, 사용자가 이 사이트를 켜 두었는지 */
   const [siteAllowed, setSiteAllowed] = useState(false);
@@ -786,7 +777,8 @@ export function usePinProof() {
   }, [tabId, onCaptured, onEdit, toContent, connectPort, postState]);
 
   // ---------- 폴더 연결 ----------
-  const connect = useCallback(async () => {
+  /** 폴더를 골라 연결한다. skill: 연결 버튼 아래 "점검 스킬도 설치" 체크박스 */
+  const connect = useCallback(async (skill = false) => {
     if (!origin) return;
     let root: FileSystemDirectoryHandle;
     try {
@@ -800,18 +792,10 @@ export function usePinProof() {
       const name = (e as DOMException).name;
       if (name === 'AbortError') return;
       // 사이드 패널에서 폴더 선택이 막히는 환경이면 익스텐션 탭에서 대신 고른다
-      await chrome.tabs.create({ url: chrome.runtime.getURL(`/connect.html?origin=${encodeURIComponent(origin)}`) });
+      await chrome.tabs.create({ url: chrome.runtime.getURL(`/connect.html?origin=${encodeURIComponent(origin)}${skill ? '&skill=1' : ''}`) });
       return;
     }
-    const ok = await connectFolder(
-      origin,
-      root,
-      (prompt) =>
-        new Promise<SetupAnswer>((resolve) => {
-          setupAnswer.current = resolve;
-          setSetupPrompt(prompt);
-        }),
-    );
+    const ok = await connectFolder(origin, root, { skill, confirmLegacy: () => USE_OPFS || window.confirm(LEGACY_CONFIRM) });
     if (ok) {
       await loadOrigin();
       say(`"${root.name}" 폴더에 연결했습니다.`);
@@ -1032,8 +1016,6 @@ export function usePinProof() {
     moveLegacy,
     skill,
     setupSkill,
-    setupPrompt,
-    answerSetup,
     connect,
     reconnect,
     disconnect,

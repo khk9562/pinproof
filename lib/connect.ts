@@ -2,16 +2,7 @@ import { setHandle } from './db';
 import { applySetup, installSkill, planSetup, SetupPlan, skillStatus } from './fs';
 import { SKILL_NAME } from './templates';
 
-export function describePlan(plan: SetupPlan): string[] {
-  const items: string[] = [];
-  if (plan.legacy) items.push('.bugnotes/ → .pinproof/ 옮기기');
-  if (plan.workflow) items.push('.pinproof/ 만들기 (기록 · 처리 절차)');
-  if (plan.exclude) items.push('.git/info/exclude 에 추가 (내 컴퓨터만)');
-  if (plan.git === 'worktree') items.push('(워크트리: 무시 설정은 메인 저장소에서 직접)');
-  return items;
-}
-
-/** 스킬 설치 위치와 git 무시 설정 안내(연결 확인 창 · 패널 확인 창 공통) */
+/** 스킬 설치 위치와 git 무시 설정 안내(패널의 설치 · 업데이트 확인 창) */
 export function skillFileLines(git: SetupPlan['git'], update = false): string[] {
   const where =
     git === 'repo'
@@ -23,12 +14,6 @@ export function skillFileLines(git: SetupPlan['git'], update = false): string[] 
 }
 
 export const SKILL_SUMMARY = '화면 값을 API → 원천(DB 등) → 산식까지 따라가 맞는지 점검하고 이슈 초안까지만 만드는 Claude Code 스킬입니다. 코드는 고치지 않습니다.';
-
-/** 연결 확인 창의 스킬 한 줄 설명 */
-export function skillNote(git: SetupPlan['git']): string {
-  const where = git === 'repo' ? ' · git 에 안 올라감' : git === 'worktree' ? ' · 워크트리라 커밋 주의' : '';
-  return `화면 값을 API · DB까지 대조${where}`;
-}
 
 /** 패널의 [이 프로젝트에 설치] · [업데이트] 확인 창 문구 */
 export function describeSkill(git: SetupPlan['git'], mode: 'install' | 'update'): string {
@@ -46,39 +31,26 @@ export function describeSkill(git: SetupPlan['git'], mode: 'install' | 'update')
   ].join('\n');
 }
 
-/** 폴더 연결 확인 창에 보여 줄 내용 */
-export interface SetupPrompt {
-  folder: string;
-  /** 만들거나 고칠 파일 목록(describePlan) */
-  items: string[];
-  /** 처음 연결하는 폴더(WORKFLOW.md 없음)이고 스킬이 없으면 선택 설치 체크박스(기본 꺼짐). note 는 한 줄 설명 */
-  skill: { name: string; note: string } | null;
+/** 이전 이름(.bugnotes/)을 옮길 때만 묻는 문구 — 옮긴 뒤 .bugnotes/ 와 /bugnotes 커맨드를 지우므로 */
+export const LEGACY_CONFIRM =
+  '이전 이름(BugNotes)의 .bugnotes/ 폴더가 있습니다. .pinproof/ 로 옮기고 연결할까요?\n\n- 기록·스크린샷·보관함 복사 (이미 있는 파일은 덮어쓰지 않음)\n- 모두 옮기면 .bugnotes/ 와 이전 커맨드 /bugnotes 삭제';
+
+export interface ConnectOptions {
+  /** 연결 버튼 아래 체크박스: 점검 스킬도 설치 */
+  skill: boolean;
+  /** .bugnotes/ 가 있을 때만 부른다. false 면 아무것도 쓰지 않는다 */
+  confirmLegacy: () => boolean | Promise<boolean>;
 }
 
-/** null = 취소(아무것도 쓰지 않음) */
-export type SetupAnswer = { skill: boolean } | null;
-
 /**
- * 고른 폴더에 필요한 파일을 만들고 앱 origin과 연결한다.
- * 만들 것이 있으면 ask 로 확인 창(파일 목록 + 선택 스킬 체크박스)을 띄우고, 취소하면 아무것도 쓰지 않는다.
+ * 고른 폴더에 필요한 파일(.pinproof/ · exclude)을 만들고 앱 origin과 연결한다. 연결 버튼을 누른 것이 동의다(확인 창 없음).
+ * skill 이면 점검 스킬도 설치한다(이미 있으면 그대로).
  */
-export async function connectFolder(
-  origin: string,
-  root: FileSystemDirectoryHandle,
-  ask: (prompt: SetupPrompt) => SetupAnswer | Promise<SetupAnswer>,
-): Promise<boolean> {
+export async function connectFolder(origin: string, root: FileSystemDirectoryHandle, opts: ConnectOptions): Promise<boolean> {
   const plan = await planSetup(root);
-  const offerSkill = plan.workflow && !(await skillStatus(root)).installed;
-  if (plan.workflow || plan.exclude || plan.legacy) {
-    const answer = await ask({
-      folder: root.name,
-      items: describePlan(plan),
-      skill: offerSkill ? { name: SKILL_NAME, note: skillNote(plan.git) } : null,
-    });
-    if (!answer) return false;
-    await applySetup(root);
-    if (offerSkill && answer.skill) await installSkill(root);
-  }
+  if (plan.legacy && !(await opts.confirmLegacy())) return false;
+  if (plan.workflow || plan.exclude || plan.legacy) await applySetup(root);
+  if (opts.skill && !(await skillStatus(root)).installed) await installSkill(root);
   await setHandle(origin, root);
   return true;
 }

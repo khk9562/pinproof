@@ -1,6 +1,5 @@
 import { Fragment, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { SKILL_NAME } from '@/lib/templates';
-import type { SetupAnswer, SetupPrompt } from '@/lib/connect';
 import { formatSize, padId, pagePath } from '@/lib/markdown';
 import { applyTheme, loadTheme, nextTheme, onThemeChange, THEME_KEY, THEME_LABEL, ThemePref } from '@/lib/theme';
 import { DEFAULT_CATEGORY, Evidence, EvidenceKind, ItemSummary, KIND_LABEL, RecordSummary } from '@/lib/types';
@@ -55,7 +54,6 @@ export function App() {
   return (
     <div className="panel">
       <ConnectionBar bn={bn} theme={theme} />
-      {bn.setupPrompt && <SetupDialog prompt={bn.setupPrompt} onAnswer={bn.answerSetup} />}
       {bn.pendingSaves.length > 0 && (
         <section className="pending-saves" aria-label="저장 대기 항목">
           <h2>저장 대기 {bn.pendingSaves.length}개</h2>
@@ -191,60 +189,10 @@ function ThemeButton({ theme: [pref, cycle] }: { theme: [ThemePref, () => void] 
   );
 }
 
-/**
- * 폴더 연결 확인 창: 만들 파일 목록 + (처음 연결하는 폴더면) 선택 스킬 설치 체크박스(기본 꺼짐).
- * Esc · [취소] 는 아무것도 쓰지 않는다.
- */
-function SetupDialog({ prompt, onAnswer }: { prompt: SetupPrompt; onAnswer: (a: SetupAnswer) => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const [skill, setSkill] = useState(false);
-  useEffect(() => {
-    const d = ref.current;
-    if (d && !d.open) d.showModal();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className="setup-dialog"
-      aria-labelledby="setup-title"
-      onCancel={(e) => {
-        e.preventDefault();
-        onAnswer(null);
-      }}
-    >
-      <h2 id="setup-title">
-        <span className="folder">{prompt.folder || '(선택한 폴더)'}</span> 폴더 연결
-      </h2>
-      <ul className="setup-items">
-        {prompt.items.map((t) => (
-          <li key={t} className={t.startsWith('(') ? 'muted' : undefined}>
-            {t}
-          </li>
-        ))}
-      </ul>
-      {prompt.skill && (
-        <label className="setup-skill">
-          <input type="checkbox" checked={skill} onChange={(e) => setSkill(e.target.checked)} />
-          <span>
-            점검 스킬 <code>/{prompt.skill.name}</code> 도 설치
-            <small className="muted">{prompt.skill.note}</small>
-          </span>
-        </label>
-      )}
-      <div className="setup-actions">
-        <button className="btn ghost" onClick={() => onAnswer(null)}>
-          취소
-        </button>
-        <button className="btn primary" autoFocus onClick={() => onAnswer({ skill })}>
-          연결
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
 function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => void] }) {
   const host = bn.origin!.replace(/^https?:\/\//, '');
+  /** 연결 버튼 아래 체크박스: 연결하면서 점검 스킬도 설치(기본 꺼짐) */
+  const [withSkill, setWithSkill] = useState(false);
   return (
     <section className="conn">
       <div className="conn-row">
@@ -270,9 +218,15 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
         </p>
       )}
       {bn.connection === 'none' && (
-        <button className="btn primary block" onClick={bn.connect}>
-          프로젝트 폴더 연결
-        </button>
+        <>
+          <button className="btn primary block" onClick={() => bn.connect(withSkill)}>
+            프로젝트 폴더 연결
+          </button>
+          <label className="connect-skill small">
+            <input type="checkbox" checked={withSkill} onChange={(e) => setWithSkill(e.target.checked)} />
+            점검 스킬 <code>/{SKILL_NAME}</code> 도 설치 <span className="muted">(선택)</span>
+          </label>
+        </>
       )}
       {bn.connection === 'prompt' && (
         <div className="conn-actions">
@@ -325,7 +279,7 @@ function ConnectionBar({ bn, theme }: { bn: PinProof; theme: [ThemePref, () => v
       {bn.connection === 'none' && (
         <p className="muted small">
           고른 폴더에 <code>.pinproof/</code>를 만들고, git 저장소면 <code>.git/info/exclude</code>에 추가합니다(팀{' '}
-          <code>.gitignore</code>는 건드리지 않음). 만들기 전에 목록을 보여드립니다.
+          <code>.gitignore</code>는 건드리지 않음). 스킬도 <code>.claude/skills/</code>에 두고 exclude 로 git 에서 뺍니다.
         </p>
       )}
     </section>
