@@ -13,6 +13,7 @@ import {
   moveItem,
   nextItemId,
   readCategories,
+  renameItemCategory,
   updateWorkflow,
   workflowStatus,
   writeCategories,
@@ -22,7 +23,7 @@ import type { WorkflowStatus } from '@/lib/fs';
 import { copyPrompt, itemFileName, itemsPrompt, padId, pagePath, sameTarget } from '@/lib/markdown';
 import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
-import { DEFAULT_CATEGORY, Evidence, Item, ItemSummary, RecordSummary } from '@/lib/types';
+import { DEFAULT_CATEGORY, Evidence, Item, ItemEditField, ItemSummary, PendingItemSave, RecordSummary } from '@/lib/types';
 
 export type Connection = 'none' | 'prompt' | 'granted';
 
@@ -78,6 +79,8 @@ export function usePinProof() {
   const [category, setCategoryState] = useState<string>(DEFAULT_CATEGORY);
   const [summaries, setSummaries] = useState<ItemSummary[]>([]);
   const [models, setModels] = useState<Map<number, Item>>(new Map());
+  const [pendingSaves, setPendingSaves] = useState<PendingItemSave[]>([]);
+  const [savingUids, setSavingUids] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'warn' } | null>(null);
   /** 방금 담은 증거(uid). 패널에서 그 항목을 펼쳐 보여준다 */
   const [freshUid, setFreshUid] = useState<string | null>(null);
@@ -91,12 +94,16 @@ export function usePinProof() {
   const local = isSupportedUrl(tabUrl);
   const pattern = local ? null : sitePattern(tabUrl);
   const origin = local || (pattern && siteAllowed) ? new URL(tabUrl).origin : null;
+  const originRef = useRef(origin);
+  originRef.current = origin;
   const handleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const modelsRef = useRef(models);
   modelsRef.current = models;
   const categoryRef = useRef(category);
   categoryRef.current = category;
   const noteTimers = useRef(new Map<number, number>());
+  const saveRuns = useRef(new Map<string, Promise<boolean>>());
+  const latestSaveRevision = useRef(new Map<string, string>());
   /** 항목을 연달아 만들 때 번호가 겹치지 않게 차례로 */
   const creating = useRef<Promise<unknown>>(Promise.resolve());
   const pendingFlash = useRef<{ url: string; selector: string; uid: string } | null>(null);
@@ -113,9 +120,9 @@ export function usePinProof() {
 
   const nextNumber = useMemo(() => {
     if (connection !== 'granted') return null;
-    const ids = [...records.map((r) => r.id), ...summaries.map((s) => s.id)];
+    const ids = [...records.map((r) => r.id), ...summaries.map((s) => s.id), ...pendingSaves.map((s) => s.item.id)];
     return (ids.length ? Math.max(...ids) : 0) + 1;
-  }, [connection, records, summaries]);
+  }, [connection, records, summaries, pendingSaves]);
 
   const overlayState = useMemo<OverlayState>(() => {
     const markers: MarkerInfo[] = [];
@@ -256,7 +263,9 @@ export function usePinProof() {
   /** 폴더를 읽는다: 옛 기록·항목·카테고리. 완료로 바뀐 항목은 바로 보관함으로 옮긴다 */
   const refreshRecords = useCallback(async () => {
     const h = handleRef.current;
-    if (!h || !(await ensurePermission(h, false))) return;
+    if (!h) return;
+    setPendingSaves(await db.listPendingSaves(h));
+    if (!(await ensurePermission(h, false))) return;
     try {
       let items = await listItems(h);
       const done = items.filter((s) => !s.archived && s.status === '완료');
@@ -275,25 +284,74 @@ export function usePinProof() {
     }
   }, [say]);
 
-  /** 항목 하나를 파일과 편집용 원본에 쓴다 */
-  const persistItem = useCallback(
-    async (item: Item) => {
-      if (!origin) return;
-      const h = handleRef.current;
-      setModels((m) => new Map(m).set(item.id, item));
-      await db.setItemModel(origin, item);
-      if (!h || !(await ensurePermission(h, false))) {
-        setConnection(h ? 'prompt' : 'none');
-        return;
-      }
-      try {
-        await writeItem(h, { ...item, updated: nowStamp() });
-      } catch (e) {
-        say(`파일 저장 실패: ${String(e)}`, 'warn');
-      }
+  const attemptSave = useCallback(
+    async (save: PendingItemSave, requestPermission = false): Promise<boolean> => {
+      const uid = save.item.evidence.uid;
+      const previous = saveRuns.current.get(uid) ?? Promise.resolve(false);
+      const run: Promise<boolean> = previous.catch(() => false).then(async () => {
+        const current = await db.getPendingSave(uid);
+        if (!current || current.revision !== save.revision) return false;
+        if (save.revision && !latestSaveRevision.current.has(uid)) latestSaveRevision.current.set(uid, save.revision);
+        setSavingUids((uids) => new Set(uids).add(save.item.evidence.uid));
+        try {
+          if (!(await ensurePermission(save.folder, requestPermission))) throw new Error('폴더 쓰기 권한이 필요합니다.');
+          const summary = await writeItem(save.folder, { ...save.item, updated: nowStamp() }, save.create, save.fields);
+          const item = { ...save.item, category: summary.category, status: summary.status, sent: summary.sent, evidence: { ...save.item.evidence, note: summary.note } };
+          const settled = await db.settlePendingSave(save, { item });
+          const folder = handleRef.current;
+          const sameFolder = folder && await folder.isSameEntry(save.folder);
+          if (settled && sameFolder && handleRef.current === folder && latestSaveRevision.current.get(uid) === save.revision && item.app === originRef.current) {
+            modelsRef.current = new Map(modelsRef.current).set(item.id, item);
+            setModels(modelsRef.current);
+          }
+          return settled;
+        } catch (e) {
+          if (await db.settlePendingSave(save, { error: String(e) })) say(`파일 저장 실패: ${String(e)}`, 'warn');
+          return false;
+        } finally {
+          setSavingUids((uids) => {
+            const next = new Set(uids);
+            next.delete(save.item.evidence.uid);
+            return next;
+          });
+          const h = handleRef.current;
+          if (h) setPendingSaves(await db.listPendingSaves(h));
+        }
+      });
+      saveRuns.current.set(uid, run);
+      void run.finally(() => { if (saveRuns.current.get(uid) === run) saveRuns.current.delete(uid); }).catch(() => {});
+      return run;
     },
     [origin, say],
   );
+
+  const queueSave = useCallback(
+    async (item: Item, create: boolean, fields: ItemEditField[]): Promise<PendingItemSave | null> => {
+      const h = handleRef.current;
+      if (!h) return null;
+      const revision = crypto.randomUUID();
+      latestSaveRevision.current.set(item.evidence.uid, revision);
+      const save = await db.queuePendingSave(item, h, create, fields, revision);
+      setPendingSaves(await db.listPendingSaves(h));
+      return save;
+    },
+    [],
+  );
+
+  const persistItem = useCallback(async (item: Item, create = false, fields: ItemEditField[] = ['note', 'category', 'sent']): Promise<boolean> => {
+    const save = await queueSave(item, create, fields);
+    return save ? attemptSave(save) : false;
+  }, [queueSave, attemptSave]);
+
+  const retrySave = useCallback(async (uid: string) => {
+    const h = handleRef.current;
+    if (!h) return;
+    const save = (await db.listPendingSaves(h)).find((entry) => entry.item.evidence.uid === uid);
+    if (save && await attemptSave(save, true)) {
+      await refreshRecords();
+      say(`#${padId(save.item.id)} 항목을 저장했습니다.`);
+    }
+  }, [attemptSave, refreshRecords, say]);
 
   /** 증거 하나로 지금 카테고리에 새 항목을 만든다 */
   const createItem = useCallback(
@@ -301,16 +359,17 @@ export function usePinProof() {
       const run = creating.current.then(async () => {
         const h = handleRef.current;
         if (!origin || !h || !(await ensurePermission(h, false))) return null;
+        const pending = await db.listPendingSaves(h);
+        if (pending.some((save) => save.item.evidence.uid === evidence.uid)) return null;
         const item: Item = {
-          id: await nextItemId(h),
+          id: Math.max(await nextItemId(h), ...pending.map((save) => save.item.id + 1)),
           category,
           status: '대기',
           created: nowStamp(),
           app: origin,
           evidence: { ...evidence, letter: undefined },
         };
-        await persistItem(item);
-        return item;
+        return await persistItem(item, true) ? item : null;
       });
       creating.current = run.catch(() => {});
       return run;
@@ -327,12 +386,14 @@ export function usePinProof() {
     setRecords([]);
     setSummaries([]);
     setModels(new Map());
+    setPendingSaves([]);
     setCategories([DEFAULT_CATEGORY]);
     if (!origin) return;
     const h = await db.getHandle(origin);
     const granted = !!h && (await ensurePermission(h, false));
     if (h) {
       handleRef.current = h;
+      setPendingSaves(await db.listPendingSaves(h));
       setFolderName(h.name);
       setConnection(granted ? 'granted' : 'prompt');
     }
@@ -393,11 +454,12 @@ export function usePinProof() {
       // 팝오버가 열린 사이 그 카테고리를 지우거나 이름을 바꿨으면 지금 카테고리로 담는다
       const to = picked && (categories.includes(picked) || picked === categoryRef.current) ? picked : categoryRef.current;
       const item = await createItem(evidence, to);
-      if (!item) return;
+      if (!item) return false;
       // 팝오버에서 고른 카테고리를 다음 담기의 기본값으로 기억한다
       if (to !== categoryRef.current) setCategory(to);
       setFreshUid(item.evidence.uid);
-      refreshRecords();
+      await refreshRecords();
+      return true;
     },
     [origin, connection, views, categories, createItem, setCategory, refreshRecords, say],
   );
@@ -408,24 +470,25 @@ export function usePinProof() {
       const item = modelsRef.current.get(id);
       if (!item || !origin) return;
       const next = { ...item, evidence: { ...item.evidence, note } };
-      setModels((m) => new Map(m).set(id, next));
-      db.setItemModel(origin, next);
+      modelsRef.current = new Map(modelsRef.current).set(id, next);
+      setModels(modelsRef.current);
+      queueSave(next, false, ['note']);
       window.clearTimeout(noteTimers.current.get(id));
       noteTimers.current.set(
         id,
         window.setTimeout(() => {
-          persistItem(modelsRef.current.get(id) ?? next).then(refreshRecords);
+          persistItem(modelsRef.current.get(id) ?? next, false, ['note']).then(refreshRecords);
         }, 600),
       );
     },
-    [origin, persistItem, refreshRecords],
+    [origin, queueSave, persistItem, refreshRecords],
   );
 
   const moveItemTo = useCallback(
     async (id: number, to: string) => {
       const item = modelsRef.current.get(id);
       if (!item || item.category === to) return;
-      await persistItem({ ...item, category: to });
+      if (!await persistItem({ ...item, category: to }, false, ['category'])) return;
       await refreshRecords();
       say(`#${padId(id)} 를 "${to}"(으)로 옮겼습니다.`);
     },
@@ -443,6 +506,12 @@ export function usePinProof() {
       if (ask && !window.confirm(`${archived ? '보관한 항목' : '항목'} #${padId(id)} 를 삭제할까요?\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return;
       window.clearTimeout(noteTimers.current.get(id));
       try {
+        const pending = (await db.listPendingSaves(h)).filter((save) => save.item.id === id);
+        for (const save of pending) {
+          await db.removePendingSave(save.item.evidence.uid);
+          latestSaveRevision.current.delete(save.item.evidence.uid);
+        }
+        await Promise.all(pending.map((save) => saveRuns.current.get(save.item.evidence.uid)));
         await deleteItem(h, id, archived);
         await db.deleteItemModel(origin, id);
         setModels((m) => {
@@ -468,6 +537,14 @@ export function usePinProof() {
       if (!h || !origin) return false;
       if (!list.length || !window.confirm(`${question}\n\nmd 파일과 스크린샷이 지워지며 되돌릴 수 없습니다.`)) return false;
       try {
+        const ids = new Set(list.map((summary) => summary.id));
+        const pending = (await db.listPendingSaves(h)).filter((save) => ids.has(save.item.id));
+        for (const save of pending) {
+          window.clearTimeout(noteTimers.current.get(save.item.id));
+          await db.removePendingSave(save.item.evidence.uid);
+          latestSaveRevision.current.delete(save.item.evidence.uid);
+        }
+        await Promise.all(pending.map((save) => saveRuns.current.get(save.item.evidence.uid)));
         for (const s of list) {
           window.clearTimeout(noteTimers.current.get(s.id));
           await deleteItem(h, s.id, true);
@@ -521,19 +598,20 @@ export function usePinProof() {
     async (ids: number[], prompt: string) => {
       await navigator.clipboard.writeText(prompt);
       const sent = nowStamp();
+      let saved = true;
       for (const id of ids) {
         const item = modelsRef.current.get(id);
-        if (item) await persistItem({ ...item, sent });
+        if (item && !await persistItem({ ...item, sent }, false, ['sent'])) saved = false;
       }
       await refreshRecords();
+      return saved;
     },
     [persistItem, refreshRecords],
   );
 
   const copyItem = useCallback(
     async (id: number) => {
-      await sendItems([id], itemsPrompt([itemFileName(id)]));
-      say(`#${padId(id)} 프롬프트를 복사했습니다.`);
+      if (await sendItems([id], itemsPrompt([itemFileName(id)]))) say(`#${padId(id)} 프롬프트를 복사했습니다.`);
     },
     [sendItems, say],
   );
@@ -549,8 +627,9 @@ export function usePinProof() {
         return;
       }
       const ids = list.map((v) => v.summary.id);
-      await sendItems(ids, itemsPrompt(ids.map(itemFileName), name));
-      say(fresh.length ? `"${name}"의 새 항목 ${ids.length}건을 복사했습니다.` : `"${name}"의 대기 항목 ${ids.length}건을 다시 복사했습니다.`);
+      if (await sendItems(ids, itemsPrompt(ids.map(itemFileName), name))) {
+        say(fresh.length ? `"${name}"의 새 항목 ${ids.length}건을 복사했습니다.` : `"${name}"의 대기 항목 ${ids.length}건을 다시 복사했습니다.`);
+      }
     },
     [views, sendItems, say],
   );
@@ -579,14 +658,27 @@ export function usePinProof() {
         say(`"${to}" 카테고리가 이미 있습니다.`, 'warn');
         return;
       }
+      const changed = await renameItemCategory(h, from, to);
       await writeCategories(h, categories.map((c) => (c === from ? to : c)));
-      for (const item of modelsRef.current.values()) {
-        if (item.category === from) await persistItem({ ...item, category: to });
+      const changedKeys = new Map(changed.map((summary) => [`${summary.app}#${summary.id}`, summary]));
+      for (const item of await db.listAllItemModels()) {
+        const summary = changedKeys.get(`${item.app}#${item.id}`);
+        if (!summary) continue;
+        const next = { ...item, category: to, status: summary.status };
+        await db.setItemModel(item.app, next);
+        if (item.app === origin) modelsRef.current = new Map(modelsRef.current).set(item.id, next);
+      }
+      setModels(modelsRef.current);
+      for (const save of await db.listPendingSaves(h)) {
+        if (save.item.category === from) {
+          const next = await db.setPendingSave({ ...save, item: { ...save.item, category: to } });
+          latestSaveRevision.current.set(save.item.evidence.uid, next.revision!);
+        }
       }
       if (categoryRef.current === from) setCategory(to);
       await refreshRecords();
     },
-    [categories, persistItem, setCategory, refreshRecords, say],
+    [origin, categories, setCategory, refreshRecords, say],
   );
 
   /**
@@ -608,11 +700,21 @@ export function usePinProof() {
       )
         return;
       try {
+        const pendingSaves = await db.listPendingSaves(h);
         for (const s of pending) {
           window.clearTimeout(noteTimers.current.get(s.id));
           await deleteItem(h, s.id, false);
           await db.deleteItemModel(s.app ?? origin, s.id);
         }
+        for (const save of pendingSaves) {
+          if (pending.some((summary) => summary.id === save.item.id)) {
+            await db.removePendingSave(save.item.evidence.uid);
+          } else if (save.item.category === name) {
+            const next = await db.setPendingSave({ ...save, item: { ...save.item, category: DEFAULT_CATEGORY }, fields: [...new Set([...(save.fields ?? []), 'category' as const])] });
+            latestSaveRevision.current.set(save.item.evidence.uid, next.revision!);
+          }
+        }
+        setPendingSaves(await db.listPendingSaves(h));
         if (pending.length) {
           setModels((m) => {
             const n = new Map(m);
@@ -761,8 +863,9 @@ export function usePinProof() {
         say('붙여넣을 이미지나 텍스트가 없습니다.', 'warn');
         return;
       }
-      for (const ev of items) await onCaptured(ev);
-      say(`붙여넣은 자료 ${items.length}개를 담았습니다.`);
+      let saved = 0;
+      for (const ev of items) if (await onCaptured(ev)) saved++;
+      if (saved) say(`붙여넣은 자료 ${saved}개를 담았습니다.`);
     },
     [tabUrl, origin, onCaptured, say],
   );
@@ -875,6 +978,9 @@ export function usePinProof() {
     connection,
     folderName,
     notice,
+    pendingSaves,
+    savingUids,
+    retrySave,
     freshUid,
     workflow,
     upgradeWorkflow,

@@ -855,6 +855,272 @@ try {
   await app.waitForTimeout(300);
   check((await panel.evaluate(() => document.documentElement.dataset.theme)) === undefined && (await app.locator('pinproof-overlay').getAttribute('data-theme')) === null, '다시 누르면 시스템 설정으로 돌아감');
 
+  await app.goto(`${BASE}/dashboard`);
+  await app.locator('pinproof-overlay .tb').waitFor();
+  await app.evaluate(async () => {
+    history.pushState({}, '', '/dashboard?view=first#summary');
+    await (await fetch('/api/nodes?view=first')).text();
+    history.pushState({}, '', '/dashboard?view=second#details');
+    await (await fetch('/api/nodes?view=second')).text();
+  });
+  await app.waitForTimeout(200);
+  const routeSnapshot = await sw.evaluate((tabId) => chrome.tabs.sendMessage(tabId, { type: 'bn:network' }), tabId);
+  check(routeSnapshot.route === '/dashboard?view=second#details' && routeSnapshot.entries.some((e) => e.url.includes('view=second')) && !routeSnapshot.entries.some((e) => e.url.includes('view=first')), '쿼리와 해시로 다른 화면의 API 호출 분리');
+  await app.goto(`${BASE}/dashboard`);
+  await app.locator('pinproof-overlay .tb').waitFor();
+  await app.evaluate(() => {
+    const box = document.createElement('section');
+    box.id = 'regression-transient';
+    box.innerHTML = '<button id="regression-menu-open">메뉴 열기</button><div id="regression-menu" hidden><button id="regression-menu-item">메뉴 내부 항목</button></div><div id="regression-hover">마우스를 올리세요<div class="items"><button id="regression-hover-item">Hover 내부 항목</button></div></div><button id="regression-archive">완료 항목 검증</button>';
+    const style = document.createElement('style');
+    style.textContent = '#regression-transient{margin-top:24px}#regression-hover{margin-top:24px;width:260px;padding:12px;background:#eee}#regression-hover .items{display:none}#regression-hover:hover .items{display:block}';
+    document.head.append(style);
+    document.body.append(box);
+    document.querySelector('#regression-menu-open').onclick = () => { document.querySelector('#regression-menu').hidden = false; };
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('#regression-menu, #regression-menu-open')) document.querySelector('#regression-menu').hidden = true;
+    });
+  });
+  await tool('요소').click();
+  await app.keyboard.down('Alt');
+  await app.locator('#regression-menu-open').click();
+  check(await app.locator('#regression-menu').isVisible(), 'Alt 를 누른 동안 페이지 메뉴 열기 가능');
+  await app.locator('#regression-menu-item').hover();
+  await app.keyboard.up('Alt');
+  await app.locator('#regression-menu-item').click();
+  await pop.waitFor();
+  check((await pop.textContent()).includes('메뉴 내부 항목'), 'Alt 를 놓으면 메뉴 내부 요소를 선택');
+  await confirm('메뉴를 열어 둔 채 담은 항목');
+  await app.waitForTimeout(300);
+  await app.keyboard.down('Alt');
+  await app.locator('#regression-hover').hover();
+  await app.locator('#regression-hover-item').hover();
+  await app.keyboard.up('Alt');
+  check(await app.locator('#regression-hover-item').isVisible(), '툴바로 이동하지 않고 Hover 메뉴 선택 재개');
+  await app.locator('#regression-hover-item').click();
+  await pop.waitFor();
+  check((await pop.textContent()).includes('Hover 내부 항목'), 'Hover 로만 보이는 항목 캡처');
+  await confirm('Hover 메뉴 항목');
+  await app.keyboard.press('Escape');
+  await addCategory('보관 검증');
+  await tool('요소').click();
+  await app.locator('#regression-archive').click();
+  await pop.waitFor();
+  const archiveRegressionId = await ov((h) => Number(h.shadowRoot.querySelector('.pop .lt').textContent));
+  const archiveRegressionName = `${String(archiveRegressionId).padStart(3, '0')}.md`;
+  await confirm('이름 변경 후에도 완료 유지');
+  await app.keyboard.press('Escape');
+  await panel.waitForTimeout(500);
+  await agentEdit(`.pinproof/items/${archiveRegressionName}`, { done: true, append: '\n## 처리 기록\n- 완료 검증 기록\n' });
+  await panel.waitForTimeout(5600);
+  await openCatMenu();
+  await catMenu.getByRole('button', { name: '"보관 검증" 이름 바꾸기', exact: true }).click();
+  await panel.getByLabel('바꿀 이름').fill('보관 검증 변경');
+  await catMenu.getByRole('button', { name: '바꾸기', exact: true }).click();
+  await panel.waitForTimeout(500);
+  const renamedArchive = await readOpfs(`.pinproof/items/archive/${archiveRegressionName}`);
+  check((await readOpfs(`.pinproof/items/${archiveRegressionName}`)) === null, '카테고리 이름 변경 시 완료 항목이 대기 목록에 다시 생기지 않음');
+  check(renamedArchive?.includes('status: 완료') && renamedArchive.includes('category: "보관 검증 변경"') && renamedArchive.includes('완료 검증 기록'), '보관 항목의 카테고리만 변경하고 완료 상태와 처리 기록 유지');
+  await app.evaluate(() => {
+    for (const id of ['regression-save-first', 'regression-save-second']) {
+      const target = document.createElement('button');
+      target.id = id;
+      target.textContent = id;
+      document.body.append(target);
+    }
+  });
+  await panel.evaluate(() => {
+    const original = FileSystemDirectoryHandle.prototype.getFileHandle;
+    FileSystemDirectoryHandle.prototype.getFileHandle = function (name, options) {
+      if (/^\d+\.md$/.test(name) && options?.create) return Promise.reject(new DOMException('E2E 저장 실패', 'QuotaExceededError'));
+      return original.call(this, name, options);
+    };
+  });
+  await tool('요소').click();
+  const failedCaptures = [];
+  for (const [target, note] of [['#regression-save-first', '저장 실패 첫 자료'], ['#regression-save-second', '저장 실패 둘째 자료']]) {
+    await app.locator(target).click();
+    await pop.waitFor();
+    failedCaptures.push({ id: await ov((h) => Number(h.shadowRoot.querySelector('.pop .lt').textContent)), note });
+    await confirm(note);
+    await panel.locator('.pending-save', { hasText: note }).waitFor();
+  }
+  check(failedCaptures[0].id !== failedCaptures[1].id, '파일 저장이 실패한 자료끼리 항목 번호가 겹치지 않음');
+  await app.keyboard.press('Escape');
+  dialogAnswer = true;
+  await openCatMenu();
+  await catMenu.getByRole('button', { name: '"보관 검증 변경" 삭제', exact: true }).click();
+  await panel.waitForTimeout(300);
+  check((await panel.locator('.pending-save strong').allTextContents()).every((text) => text.includes('미분류')), '카테고리를 삭제해도 저장 대기 자료는 미분류에 보존');
+  await panel.screenshot({ path: path.join(outDir, 'save-retry.png'), fullPage: true });
+  await panel.reload();
+  await panel.locator('.pending-save').nth(1).waitFor();
+  check((await panel.locator('.pending-save').count()) === 2, '패널을 다시 열어도 저장 실패 자료 두 개 유지');
+  for (const { id, note } of failedCaptures) {
+    const pendingRow = panel.locator('.pending-save', { hasText: note });
+    await pendingRow.getByRole('button', { name: '저장 다시 시도', exact: true }).click();
+    await pendingRow.waitFor({ state: 'detached' });
+    const saved = await readOpfs(`.pinproof/items/${String(id).padStart(3, '0')}.md`);
+    check(saved?.includes(note) && saved.includes('스크린샷') && saved.includes('category: "미분류"'), `저장 재시도로 #${id} 메모와 스크린샷 파일 복구`);
+  }
+  const editRaceRow = panel.locator('.cat.current .ev', { hasText: '저장 실패 첫 자료' });
+  if ((await editRaceRow.locator('.ev-head').getAttribute('aria-expanded')) !== 'true') await editRaceRow.locator('.ev-head').click();
+  for (const failOlder of [false, true]) {
+    await panel.evaluate(({ id, failOlder }) => {
+      const previous = window.__originalWritable ?? FileSystemFileHandle.prototype.createWritable;
+      window.__originalWritable = previous;
+      window.__releaseSave = null;
+      let blocked = false;
+      FileSystemFileHandle.prototype.createWritable = async function (...args) {
+        const writable = await previous.apply(this, args);
+        if (this.name !== `${String(id).padStart(3, '0')}.md` || blocked) return writable;
+        blocked = true;
+        return {
+          write: async (data) => {
+            await new Promise((resolve) => { window.__releaseSave = resolve; });
+            if (failOlder) { await writable.abort(); throw new DOMException('E2E 이전 저장 실패', 'QuotaExceededError'); }
+            return writable.write(data);
+          },
+          close: () => writable.close(),
+        };
+      };
+    }, { id: failedCaptures[0].id, failOlder });
+    const oldNote = failOlder ? '실패할 이전 메모' : '먼저 저장하는 메모';
+    const latestNote = failOlder ? '이전 저장 실패 중 작성한 최신 메모' : '이전 저장 중 작성한 최신 메모';
+    const editor = panel.locator('.cat.current .ev-note');
+    await editor.fill(oldNote);
+    await panel.waitForFunction(() => typeof window.__releaseSave === 'function');
+    await editor.fill(latestNote);
+    await panel.waitForTimeout(100);
+    await panel.evaluate(() => window.__releaseSave());
+    await panel.waitForTimeout(1200);
+    const saved = await readOpfs(`.pinproof/items/${String(failedCaptures[0].id).padStart(3, '0')}.md`);
+    check((await editor.inputValue()) === latestNote && saved?.includes(latestNote), failOlder ? '이전 저장이 실패해도 최신 메모를 보존하고 저장' : '저장 중 다시 입력한 최신 메모를 화면과 파일에 보존');
+  }
+  await panel.evaluate(() => { FileSystemFileHandle.prototype.createWritable = window.__originalWritable; });
+  await app.evaluate(() => {
+    for (const [id, title] of [['proof-modal-first', '모달 내부 기록'], ['proof-modal-second', '두 번째 모달']]) {
+      const dialog = document.createElement('dialog');
+      dialog.id = id;
+      dialog.style.cssText = 'width:420px;padding:32px;transform:translateY(-40px);overflow:hidden;';
+      dialog.innerHTML = `<h2>${title}</h2><p>모달을 닫지 않고 화면의 문제를 기록합니다.</p><button id="${id}-target">이 버튼의 문제 기록하기</button>`;
+      document.body.append(dialog);
+    }
+    const pagePopover = document.createElement('div');
+    pagePopover.id = 'proof-page-popover';
+    pagePopover.popover = 'auto';
+    pagePopover.innerHTML = '<h2>페이지 팝오버</h2><button id="proof-popover-target">팝오버 내부 항목 기록</button>';
+    pagePopover.style.cssText = 'position:fixed;inset:0;margin:0;width:100vw;height:100vh;padding:16px;';
+    document.body.append(pagePopover);
+    const trigger = document.createElement('button');
+    trigger.id = 'proof-page-popover-trigger';
+    trigger.textContent = '페이지 팝오버 열기';
+    trigger.setAttribute('popovertarget', pagePopover.id);
+    document.body.append(trigger);
+    document.querySelector('#proof-modal-second').showModal();
+    document.querySelector('#proof-modal-first').showModal();
+  });
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement.id === 'proof-modal-first'), '나중에 연 모달 안에 도구 배치(문서 순서와 무관)');
+  await app.keyboard.press('Alt+Shift+E');
+  await app.locator('#proof-modal-first-target').click();
+  await pop.waitFor();
+  const modalNoteFocused = await ov((h) => h.shadowRoot.activeElement === h.shadowRoot.querySelector('.pop textarea'));
+  check(modalNoteFocused, '모달 내부 메모 입력란에 포커스');
+  const modalCardBox = await pop.boundingBox();
+  check(await app.evaluate(({ x, y, width, height }) => document.elementFromPoint(x + width / 2, y + height / 2)?.tagName === 'PINPROOF-OVERLAY', modalCardBox), '모달 위 메모창에 포인터 입력 가능');
+  await app.waitForTimeout(250);
+  await app.screenshot({ path: path.join(outDir, 'native-modal.png') });
+  if (modalNoteFocused) {
+    await pop.locator('textarea').fill('모달 안에서 작성한 메모');
+    await pop.locator('textarea').press('Escape');
+    check(await app.locator('#proof-modal-first').evaluate((d) => d.open), '메모 취소 Esc 는 페이지 모달을 닫지 않음');
+    await app.keyboard.press('Escape');
+    check(await app.locator('#proof-modal-first').evaluate((d) => d.open), '선택 종료 Esc 는 페이지 모달을 닫지 않음');
+    await tool('요소').click();
+    await app.locator('#proof-modal-first-target').click();
+    await pop.waitFor();
+    await pop.locator('textarea').fill('모달 안에서 작성한 메모');
+    await app.waitForTimeout(250);
+    await app.screenshot({ path: path.join(outDir, 'native-modal-note.png') });
+    await pop.locator('textarea').press('Enter');
+    await panel.waitForTimeout(800);
+    const modalFile = await panel.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const items = await (await root.getDirectoryHandle('.pinproof')).getDirectoryHandle('items');
+      for await (const [name, handle] of items.entries()) {
+        if (!name.endsWith('.md')) continue;
+        const text = await (await handle.getFile()).text();
+        if (text.includes('모달 안에서 작성한 메모')) return text;
+      }
+      return '';
+    });
+    check(modalFile.includes('#proof-modal-first-target') && modalFile.includes('스크린샷'), '모달 내부 항목의 메모·selector·스크린샷 저장');
+    check(await ov((h) => h.matches(':popover-open')), '스크린샷 촬영 뒤에도 도구의 최상위 표시 유지');
+    await app.keyboard.press('Escape');
+  } else {
+    await sw.evaluate((tabId) => chrome.tabs.sendMessage(tabId, { type: 'bn:stop' }), tabId);
+  }
+  await app.evaluate(() => document.querySelector('#proof-modal-first').close());
+
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement.id === 'proof-modal-second'), '위 모달을 닫으면 남은 모달로 도구 복귀');
+  await app.evaluate(() => document.querySelector('#proof-modal-second').remove());
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement === document.documentElement && h.matches(':popover-open')), '마지막 모달 제거 뒤 일반 페이지로 도구 복귀');
+  await app.locator('#proof-page-popover-trigger').click();
+  await app.waitForTimeout(100);
+  const layerToolbarBox = await app.locator('pinproof-overlay .tb').boundingBox();
+  check(await app.evaluate(({ x, y, width, height }) => document.elementFromPoint(x + width / 2, y + height / 2)?.tagName === 'PINPROOF-OVERLAY', layerToolbarBox), '페이지 팝오버가 열려도 툴바 입력 가능');
+  check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '도구를 앞으로 올릴 때 페이지 팝오버 유지');
+  await tool('요소').click();
+  const pagePopoverSurvived = await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open'));
+  check(pagePopoverSurvived, '툴바의 요소 버튼을 클릭해도 페이지 팝오버 유지');
+  if (pagePopoverSurvived) {
+    await app.locator('#proof-popover-target').click();
+    await pop.waitFor();
+    await pop.locator('textarea').fill('팝오버 안에서 작성한 메모');
+    check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '팝오버 내부 요소 선택과 메모 입력 중에도 페이지 팝오버 유지');
+    const popoverNumber = await ov((h) => Number(h.shadowRoot.querySelector('.pop .lt').textContent));
+    await pop.locator('textarea').press('Enter');
+    await panel.waitForTimeout(800);
+    const popoverFile = await readOpfs(`.pinproof/items/${String(popoverNumber).padStart(3, '0')}.md`);
+    check(popoverFile?.includes('팝오버 안에서 작성한 메모') && popoverFile.includes('#proof-popover-target') && popoverFile.includes('스크린샷'), '페이지 팝오버 내부 항목의 메모·selector·스크린샷 저장');
+    check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '항목을 저장한 뒤에도 페이지 팝오버 유지');
+    await app.keyboard.press('Escape');
+    check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '선택 종료 Esc 는 페이지 팝오버를 닫지 않음');
+  }
+  await app.evaluate(() => document.querySelector('#proof-page-popover').hidePopover());
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement === document.documentElement && h.matches(':popover-open')), '페이지 팝오버를 닫으면 일반 페이지로 도구 복귀');
+  await app.evaluate(() => {
+    const dialog = document.querySelector('#proof-modal-first');
+    dialog.showModal();
+    const pagePopover = document.querySelector('#proof-page-popover');
+    dialog.append(pagePopover, document.querySelector('#proof-page-popover-trigger'));
+  });
+  await app.locator('#proof-page-popover-trigger').click();
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement.id === 'proof-page-popover'), '모달 내부 팝오버 안에 도구 배치');
+  await tool('요소').click();
+  check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '모달 내부 팝오버에서도 툴바 클릭으로 닫히지 않음');
+  await app.locator('#proof-popover-target').click();
+  await pop.waitFor();
+  await pop.locator('textarea').fill('모달과 팝오버를 함께 열고 작성한 메모');
+  await app.waitForTimeout(250);
+  await app.screenshot({ path: path.join(outDir, 'popover-in-modal.png') });
+  await pop.locator('textarea').press('Enter');
+  check(await app.locator('#proof-page-popover').evaluate((p) => p.matches(':popover-open')), '모달 내부 팝오버에서도 메모 저장 후 열린 상태 유지');
+  await app.keyboard.press('Escape');
+  await app.evaluate(() => document.querySelector('#proof-page-popover').hidePopover());
+  await app.waitForTimeout(100);
+  check(await ov((h) => h.parentElement.id === 'proof-modal-first'), '모달 내부 팝오버를 닫으면 도구가 모달로 복귀');
+  await app.evaluate(() => document.querySelector('#proof-modal-first').close());
+
+  await app.goto(`${BASE}/dashboard?modal-startup=1`);
+  await app.locator('pinproof-overlay .tb').waitFor();
+  check(await ov((h) => h.parentElement.id === 'startup-popover'), '페이지 로드 때 이미 열린 모달과 팝오버 안에 도구 배치');
+
   // ---------- React 19 어댑터 (heureum) ----------
   if (heureumUrl) {
     await app.goto(heureumUrl);

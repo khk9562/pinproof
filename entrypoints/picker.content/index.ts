@@ -33,6 +33,7 @@ import { Box, Popover, PopoverHead } from './popover';
 import { OVERLAY_CSS } from './style';
 import { applyTheme, loadTheme, onThemeChange } from '@/lib/theme';
 import { Toolbar } from './toolbar';
+import { OverlayLayer } from './layer';
 
 export default defineContentScript({
   matches: ['http://localhost/*', 'http://127.0.0.1/*'],
@@ -123,6 +124,8 @@ class Picker {
   private dropUid: string | null = null;
 
   private mode: PickMode | null = null;
+  private interaction: 'select' | 'page' = 'select';
+  private pointer: { x: number; y: number } | null = null;
   private current: Element | null = null;
   private lastMouseTarget: Element | null = null;
   private downPath: Element[] = [];
@@ -235,7 +238,7 @@ class Picker {
   // ---------- UI ----------
   private mountUi() {
     this.host = document.createElement('pinproof-overlay');
-    this.host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;';
+    this.host.style.cssText = 'all: initial; position: fixed; inset: 0; margin: 0; border: 0; padding: 0; width: auto; height: auto; overflow: visible; background: transparent; pointer-events: none; z-index: 2147483647;';
     this.root = this.host.attachShadow({ mode: 'open' });
     // 테마: 패널에서 고른 값(시스템·라이트·다크)을 따른다
     loadTheme().then((p) => applyTheme(this.host, p));
@@ -263,7 +266,7 @@ class Picker {
     this.toastEl.className = 'toast';
     this.toastEl.hidden = true;
     this.root.appendChild(this.toastEl);
-    document.documentElement.appendChild(this.host);
+    new OverlayLayer(this.host);
 
     this.catcher.addEventListener('mousedown', this.onDragStart);
   }
@@ -383,6 +386,8 @@ class Picker {
         window.addEventListener(t, this.onBlock, true);
       }
       document.documentElement.style.cursor = 'crosshair';
+      window.addEventListener('keyup', this.onKeyUp, true);
+      window.addEventListener('blur', this.onWindowBlur);
     } else if (mode === 'text') {
       window.addEventListener('mouseup', this.onTextUp, true);
     } else {
@@ -401,6 +406,8 @@ class Picker {
     }
     window.removeEventListener('mouseup', this.onTextUp, true);
     window.removeEventListener('keydown', this.onKey, true);
+    window.removeEventListener('keyup', this.onKeyUp, true);
+    window.removeEventListener('blur', this.onWindowBlur);
     document.documentElement.style.cursor = '';
     this.catcher.hidden = true;
     this.dragRect.hidden = true;
@@ -408,6 +415,8 @@ class Picker {
     this.setCurrent(null);
     this.downPath = [];
     this.lastMouseTarget = null;
+    this.pointer = null;
+    this.interaction = 'select';
     this.mode = null;
     this.toolbar.setMode(null);
     if (notify) this.send({ type: 'bn:mode', mode: null }).catch(() => {});
@@ -421,12 +430,32 @@ class Picker {
   }
 
   private onMove = (e: MouseEvent) => {
+    this.pointer = { x: e.clientX, y: e.clientY };
     const t = this.targetFrom(e);
     if (!t || t === this.lastMouseTarget) return;
     this.lastMouseTarget = t;
     this.downPath = [];
-    this.setCurrent(t);
+    if (this.interaction === 'select') this.setCurrent(t);
   };
+
+  private setInteraction(interaction: 'select' | 'page') {
+    if (this.mode !== 'element' || this.interaction === interaction) return;
+    this.interaction = interaction;
+    document.documentElement.style.cursor = interaction === 'page' ? '' : 'crosshair';
+    this.toolbar.setPageInteraction(interaction === 'page');
+    const target = interaction === 'select' && this.pointer ? document.elementFromPoint(this.pointer.x, this.pointer.y) : null;
+    this.lastMouseTarget = target && target !== this.host ? target : null;
+    this.downPath = [];
+    this.setCurrent(this.lastMouseTarget);
+  }
+
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (e.key !== 'Alt') return;
+    e.preventDefault();
+    this.setInteraction('select');
+  };
+
+  private onWindowBlur = () => this.setInteraction('select');
 
   /**
    * 요소 모드에서는 앱이 클릭에 반응하지 않도록 포인터 이벤트를 막고, click에서 담는다.
@@ -434,6 +463,7 @@ class Picker {
    */
   private onBlock = (e: Event) => {
     if (e.composedPath().includes(this.host)) return;
+    if (this.interaction === 'page') return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.type === 'click' && !this.popover.isOpen) {
@@ -443,6 +473,12 @@ class Picker {
   };
 
   private onKey = (e: KeyboardEvent) => {
+    if (this.mode === 'element' && !this.popover.isOpen && e.key === 'Alt' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      this.setInteraction('page');
+      return;
+    }
+    if (this.interaction === 'page' && e.key !== 'Escape') return;
     if (this.isTyping(e) || this.popover.isOpen) return;
     // 모드 선택 메뉴가 열려 있으면 Esc 는 메뉴만 닫는다(모드는 그대로)
     if (e.key === 'Escape' && this.toolbar.closeMenu()) {

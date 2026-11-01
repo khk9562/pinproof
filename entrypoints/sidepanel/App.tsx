@@ -53,6 +53,22 @@ export function App() {
   return (
     <div className="panel">
       <ConnectionBar bn={bn} theme={theme} />
+      {bn.pendingSaves.length > 0 && (
+        <section className="pending-saves" aria-label="저장 대기 항목">
+          <h2>저장 대기 {bn.pendingSaves.length}개</h2>
+          <p className="muted small">자료는 이 브라우저에 보관되어 있습니다. 프로젝트 파일 저장을 다시 시도하세요.</p>
+          {bn.pendingSaves.map((save) => (
+            <div className="pending-save" key={save.item.evidence.uid}>
+              <strong>#{padId(save.item.id)} · {save.item.category}</strong>
+              <p>{save.item.evidence.note || save.item.evidence.label || '메모 없음'}</p>
+              {save.error && <p className="muted small" role="alert">{save.error}</p>}
+              <button className="btn primary" disabled={bn.savingUids.has(save.item.evidence.uid)} onClick={() => bn.retrySave(save.item.evidence.uid)}>
+                {bn.savingUids.has(save.item.evidence.uid) ? '저장 중' : '저장 다시 시도'}
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
       {bn.connection === 'granted' && (
         <>
           <CategoryBar bn={bn} />

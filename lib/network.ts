@@ -31,7 +31,7 @@ function isTextual(contentType: string | null): boolean {
 }
 
 export function currentRoute(): string {
-  return location.pathname + (location.hash.startsWith('#/') ? location.hash : '');
+  return location.pathname + location.search + location.hash;
 }
 
 /**
@@ -44,7 +44,7 @@ export function installNetworkHook(): (route: string) => NetworkEntry[] {
   const buffer: { visit: number; entry: NetworkEntry }[] = [];
   let visit = 0;
   let visitRoute = currentRoute();
-  /** route가 바뀌었으면 새 방문으로 센다 (쿼리만 바뀐 이동은 같은 방문) */
+  /** 경로·쿼리·해시가 바뀌면 새 방문으로 센다. */
   const visitNow = () => {
     const r = currentRoute();
     if (r !== visitRoute) {

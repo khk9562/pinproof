@@ -14,7 +14,7 @@ import {
   renderRecord,
   assetPath,
 } from './markdown';
-import { BugRecord, DEFAULT_CATEGORY, Item, ItemSummary, RecordSummary } from './types';
+import { BugRecord, DEFAULT_CATEGORY, Item, ItemEditField, ItemSummary, RecordSummary } from './types';
 
 const NOTES_DIR = '.pinproof';
 const ARCHIVE_DIR = 'archive';
@@ -375,17 +375,61 @@ async function itemsDir(root: Dir, archived: boolean, create: boolean): Promise<
  * 항목을 md + 스크린샷으로 쓴다. 처리 기록 섹션은 보존한다.
  * 파일에 이미 status: 완료(에이전트가 표시)가 있으면 익스텐션이 대기로 되돌리지 않는다.
  */
-export function writeItem(root: Dir, item: Item): Promise<void> {
+export function writeItem(root: Dir, item: Item, create = false, fields?: ItemEditField[]): Promise<ItemSummary> {
   return serial(async () => {
-    const dir = (await itemsDir(root, false, true))!;
+    let dir = await itemsDir(root, false, create);
     const name = itemFileName(item.id);
-    const existing = await readText(dir, name);
-    const keep = existing && statusOf(existing) === '완료' && item.status === '대기' ? { ...item, status: '완료' as const } : item;
+    let existing = dir ? await readText(dir, name) : null;
+    const archive = await itemsDir(root, true, false);
+    const archived = archive ? await readText(archive, name) : null;
+    if (archived !== null) {
+      dir = archive;
+      existing = archived;
+    }
+    if (!dir || (!create && existing === null)) throw new Error(`항목 #${padId(item.id)} 파일을 찾을 수 없습니다.`);
+    if (create && existing?.trim()) {
+      const header = existing.slice(0, existing.indexOf('\n---', 4));
+      const owned = header.split('\n').includes(`uid: ${JSON.stringify(item.evidence.uid)}`);
+      const summary = owned && parseItemSummary(existing, name, archived !== null);
+      if (!summary) throw new Error(`항목 #${padId(item.id)} 번호가 이미 사용 중입니다.`);
+      return summary;
+    }
+    const summary = existing && parseItemSummary(existing, name, archived !== null);
+    const edited = !create && fields && summary ? {
+      ...item,
+      category: fields.includes('category') ? item.category : summary.category,
+      sent: fields.includes('sent') ? item.sent : summary.sent,
+      evidence: { ...item.evidence, note: fields.includes('note') ? item.evidence.note : summary.note },
+    } : item;
+    const keep = existing && statusOf(existing) === '완료' && edited.status === '대기' ? { ...edited, status: '완료' as const } : edited;
     const assets = (await getDir(dir, [ASSETS_DIR], true))!;
     const shot = `${padId(item.id)}.png`;
     if (item.evidence.screenshot) await writeFile(assets, shot, dataUrlToBlob(item.evidence.screenshot));
     else if (await exists(assets, shot, 'file')) await assets.removeEntry(shot);
-    await writeFile(dir, name, mergeWithExisting(renderItem(keep), existing));
+    const rendered = renderItem(keep).replace(/^---\n/, () => `---\nuid: ${JSON.stringify(item.evidence.uid)}\n`);
+    const text = mergeWithExisting(rendered, existing);
+    await writeFile(dir, name, text);
+    return parseItemSummary(text, name, archived !== null)!;
+  });
+}
+
+export function renameItemCategory(root: Dir, from: string, to: string): Promise<ItemSummary[]> {
+  return serial(async () => {
+    const changed: ItemSummary[] = [];
+    for (const archived of [false, true]) {
+      const dir = await itemsDir(root, archived, false);
+      for (const name of await listNames(dir)) {
+        if (itemIdFromFileName(name) === null) continue;
+        const text = await readText(dir!, name);
+        const summary = text && parseItemSummary(text, name, archived);
+        if (!summary || summary.category !== from) continue;
+        const next = text!.replace(/^(---\n[\s\S]*?)^category:.*$/m, (_match, prefix) => `${prefix}category: ${JSON.stringify(to)}`)
+          .replace(/^# #\d+ · .*$/m, () => `# #${padId(summary.id)} · ${to}`);
+        await writeFile(dir!, name, next);
+        changed.push({ ...summary, category: to });
+      }
+    }
+    return changed;
   });
 }
 
