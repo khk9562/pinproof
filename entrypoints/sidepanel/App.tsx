@@ -215,7 +215,6 @@ function SetupDialog({ prompt, onAnswer }: { prompt: SetupPrompt; onAnswer: (a: 
       <h2 id="setup-title">
         <span className="folder">{prompt.folder || '(선택한 폴더)'}</span> 폴더 연결
       </h2>
-      <p className="muted small">이 폴더에 다음 작업을 합니다.</p>
       <ul className="setup-items">
         {prompt.items.map((t) => (
           <li key={t} className={t.startsWith('(') ? 'muted' : undefined}>
@@ -224,21 +223,13 @@ function SetupDialog({ prompt, onAnswer }: { prompt: SetupPrompt; onAnswer: (a: 
         ))}
       </ul>
       {prompt.skill && (
-        <div className="setup-skill">
-          <label>
-            <input type="checkbox" checked={skill} onChange={(e) => setSkill(e.target.checked)} />
-            <span>
-              데이터 정합성 점검 스킬도 설치 <span className="muted">(선택)</span> <code>/{prompt.skill.name}</code>
-            </span>
-          </label>
-          <p className="muted small">{prompt.skill.summary}</p>
-          <ul className="setup-items small muted">
-            {prompt.skill.files.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
-          <p className="muted small">설치하지 않아도 PinProof 는 그대로 동작하고, 나중에 패널에서 설치할 수 있습니다.</p>
-        </div>
+        <label className="setup-skill">
+          <input type="checkbox" checked={skill} onChange={(e) => setSkill(e.target.checked)} />
+          <span>
+            점검 스킬 <code>/{prompt.skill.name}</code> 도 설치
+            <small className="muted">{prompt.skill.note}</small>
+          </span>
+        </label>
       )}
       <div className="setup-actions">
         <button className="btn ghost" onClick={() => onAnswer(null)}>

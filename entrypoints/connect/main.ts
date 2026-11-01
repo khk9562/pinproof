@@ -32,8 +32,7 @@ function ask(prompt: SetupPrompt): Promise<SetupAnswer> {
   $('setup-skill').hidden = !prompt.skill;
   if (prompt.skill) {
     $('skill-name').textContent = `/${prompt.skill.name}`;
-    $('skill-summary').textContent = prompt.skill.summary;
-    list($('skill-files'), prompt.skill.files);
+    $('skill-note').textContent = prompt.skill.note;
   }
   return new Promise((resolve) => {
     const done = (a: SetupAnswer) => {

@@ -4,14 +4,10 @@ import { SKILL_NAME } from './templates';
 
 export function describePlan(plan: SetupPlan): string[] {
   const items: string[] = [];
-  if (plan.legacy) items.push('이전 이름의 .bugnotes/ 기록·스크린샷을 .pinproof/ 로 옮기고, 이전 커맨드(/bugnotes) 정리');
-  if (plan.workflow) items.push('.pinproof/WORKFLOW.md 생성 (공통 처리 절차)');
-  if (plan.exclude) items.push('.git/info/exclude 에 .pinproof/ 추가 (이 컴퓨터에만 적용, 팀 .gitignore 는 건드리지 않음)');
-  if (plan.git === 'worktree') {
-    items.push('(git 워크트리라 무시 설정을 쓰지 않습니다. 메인 저장소의 .git/info/exclude 에 .pinproof/ 가 있는지 확인하세요)');
-  }
-  if (plan.git === 'none') items.push('(git 저장소가 아니어서 무시 설정은 건드리지 않습니다)');
-  items.push('(/pinproof 커맨드는 프로젝트에 만들지 않습니다. ~/.claude/commands/pinproof.md 에 한 번 두세요. README 참고)');
+  if (plan.legacy) items.push('.bugnotes/ → .pinproof/ 옮기기');
+  if (plan.workflow) items.push('.pinproof/ 만들기 (기록 · 처리 절차)');
+  if (plan.exclude) items.push('.git/info/exclude 에 추가 (내 컴퓨터만)');
+  if (plan.git === 'worktree') items.push('(워크트리: 무시 설정은 메인 저장소에서 직접)');
   return items;
 }
 
@@ -27,6 +23,12 @@ export function skillFileLines(git: SetupPlan['git'], update = false): string[] 
 }
 
 export const SKILL_SUMMARY = '화면 값을 API → 원천(DB 등) → 산식까지 따라가 맞는지 점검하고 이슈 초안까지만 만드는 Claude Code 스킬입니다. 코드는 고치지 않습니다.';
+
+/** 연결 확인 창의 스킬 한 줄 설명 */
+export function skillNote(git: SetupPlan['git']): string {
+  const where = git === 'repo' ? ' · git 에 안 올라감' : git === 'worktree' ? ' · 워크트리라 커밋 주의' : '';
+  return `화면 값을 API · DB까지 대조${where}`;
+}
 
 /** 패널의 [이 프로젝트에 설치] · [업데이트] 확인 창 문구 */
 export function describeSkill(git: SetupPlan['git'], mode: 'install' | 'update'): string {
@@ -49,8 +51,8 @@ export interface SetupPrompt {
   folder: string;
   /** 만들거나 고칠 파일 목록(describePlan) */
   items: string[];
-  /** 처음 연결하는 폴더(WORKFLOW.md 없음)이고 스킬이 없으면 선택 설치 체크박스. 기본은 꺼짐 */
-  skill: { name: string; summary: string; files: string[] } | null;
+  /** 처음 연결하는 폴더(WORKFLOW.md 없음)이고 스킬이 없으면 선택 설치 체크박스(기본 꺼짐). note 는 한 줄 설명 */
+  skill: { name: string; note: string } | null;
 }
 
 /** null = 취소(아무것도 쓰지 않음) */
@@ -71,7 +73,7 @@ export async function connectFolder(
     const answer = await ask({
       folder: root.name,
       items: describePlan(plan),
-      skill: offerSkill ? { name: SKILL_NAME, summary: SKILL_SUMMARY, files: skillFileLines(plan.git) } : null,
+      skill: offerSkill ? { name: SKILL_NAME, note: skillNote(plan.git) } : null,
     });
     if (!answer) return false;
     await applySetup(root);

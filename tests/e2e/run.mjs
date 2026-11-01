@@ -121,11 +121,11 @@ try {
   });
   // 연결 확인 창: 만들 파일 목록 + 선택 스킬 체크박스(기본 꺼짐). 취소하면 아무것도 쓰지 않는다
   const setup = panel.locator('dialog.setup-dialog');
-  const skillBox = setup.getByRole('checkbox', { name: /데이터 정합성 점검 스킬도 설치/ });
+  const skillBox = setup.getByRole('checkbox', { name: /점검 스킬 .*도 설치/ });
   await panel.getByRole('button', { name: '프로젝트 폴더 연결' }).click();
   await setup.waitFor();
   check(
-    (await setup.locator('.setup-items').first().textContent()).includes('.pinproof/WORKFLOW.md 생성') && !(await skillBox.isChecked()),
+    (await setup.locator('.setup-items').first().textContent()).includes('.pinproof/ 만들기') && !(await skillBox.isChecked()),
     '연결 확인 창에 만들 파일 목록, 스킬 체크박스는 기본 꺼짐',
   );
   await setup.getByRole('button', { name: '취소' }).click();
