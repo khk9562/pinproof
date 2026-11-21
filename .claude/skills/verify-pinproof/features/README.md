@@ -41,7 +41,7 @@ PinProof 의 사용자 기능을 검증하는 정본이다. 조작하기 전에 
 | 파일 | 다루는 것 | 헬퍼 여정 |
 |---|---|---|
 | [network-capture.md](./network-capture.md) | 네트워크 담기: 지금 방문의 API 호출과 응답 요약을 항목으로 | `journeys/network-capture.mjs` 로 끝까지 돌려 통과함 |
-| [connect-folder.md](./connect-folder.md) | 프로젝트 폴더 연결, WORKFLOW.md 생성 · 업데이트, git 무시 설정 | `connect()` 만 위 여정에서 돌림. 나머지는 run.mjs 의 연결 구역에서 통과 |
+| [connect-folder.md](./connect-folder.md) | 프로젝트 폴더 연결, WORKFLOW.md 생성 · 업데이트, git 무시 설정, 점검 스킬 선택 설치 | `connect()` 만 위 여정에서 돌림. 나머지는 run.mjs 의 연결 · 선택 스킬 구역에서 통과 |
 | [capture-page.md](./capture-page.md) | 요소 · 텍스트 · 영역 담기, 팝오버 메모, 번호 마커, 항목 삭제 | 아직 없음. run.mjs 의 요소 · 텍스트 · 영역 구역에서 통과 |
 | [categories.md](./categories.md) | 카테고리 만들기 · 고르기 · 이름 바꾸기 · 삭제, 항목 옮기기 | 아직 없음. run.mjs 의 카테고리 구역에서 통과 |
 | [handoff-archive.md](./handoff-archive.md) | 프롬프트 복사와 넘김 표시, 완료 자동 보관, 되돌리기 | 아직 없음. run.mjs 의 프롬프트 · 보관 구역에서 통과 |

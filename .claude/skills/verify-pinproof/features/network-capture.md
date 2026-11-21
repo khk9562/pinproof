@@ -7,7 +7,7 @@
 - `network-capture`: [네트워크]로 지금 방문의 호출 목록을 항목으로 담는다
 - `network-status`: 200 응답은 본문 앞부분을, 403 같은 실패 응답은 상태를 기록한다
 - `network-no-marker`: 패널의 번호 원이 테두리만 있다(페이지 마커 없음)
-- `network-visit`: 같은 route 에 다시 들어오면 앞선 방문의 호출은 빠진다(여정이 아직 다루지 않음)
+- `network-visit`: 경로 · 쿼리 · 해시 중 하나라도 바뀌면 새 방문이다. 같은 화면에 다시 들어오면 앞선 방문의 호출은 빠지고, `?tab=one` 과 `?tab=two` 의 호출은 따로 담긴다(여정이 아직 다루지 않음)
 
 ## How to get to it (user POV)
 

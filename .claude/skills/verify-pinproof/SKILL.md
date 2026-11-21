@@ -94,7 +94,7 @@ node .claude/skills/verify-pinproof/scripts/journeys/network-capture.mjs  # 여�
 
 ## 전체 회귀(tests/e2e/run.mjs)
 
-기존 E2E 는 153개 검사로 거의 모든 기능을 끝까지 돈다. Git Bash 에서 아래처럼 돌린다.
+기존 E2E 는 196개 검사로 거의 모든 기능을 끝까지 돈다. Git Bash 에서 아래처럼 돌린다.
 
 ```bash
 PINPROOF_E2E=1 npx wxt build && node tests/e2e/run.mjs
@@ -110,7 +110,7 @@ PINPROOF_E2E=1 npx wxt build && node tests/e2e/run.mjs
 
 | 대역 | 실제 | 그래서 확인하지 못하는 것 |
 |---|---|---|
-| OPFS(`?opfs=1`) | 사용자가 고른 프로젝트 폴더 | 폴더 선택 창, 실제 디스크의 `.pinproof/`, 연결 동의 창(OPFS 모드는 건너뛴다), 연결 알림의 폴더 이름(OPFS 는 빈 이름이라 `"" 폴더에 연결했습니다` 로 나온다) |
+| OPFS(`?opfs=1`) | 사용자가 고른 프로젝트 폴더 | 폴더 선택 창, 실제 디스크의 `.pinproof/` · `.claude/skills/`, 예전 `.bugnotes/` 옮기기 확인 창(OPFS 모드는 건너뛴다), 연결 알림의 폴더 이름(OPFS 는 빈 이름이라 `"" 폴더에 연결했습니다` 로 나온다) |
 | 팝업 창으로 연 `sidepanel.html` | Chrome 사이드 패널 | 사이드 패널을 열고 닫는 흐름, 닫을 때 연결이 끊기는 동작 |
 | E2E 빌드의 `<all_urls>` | `activeTab`(툴바 아이콘으로 패널을 연 탭만 캡처 허용) | 아이콘 · `Alt+Shift+B` 로 연 탭에서만 스크린샷이 되는 권한 흐름 |
 | Playwright Chromium(headless) | 사용자의 Chrome | Chrome 정책, 다른 확장과의 충돌 |
