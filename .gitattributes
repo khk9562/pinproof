@@ -1,0 +1,3 @@
+# 익스텐션이 묶어 프로젝트에 설치하는 스킬 파일은 어느 OS 에서 체크아웃 · 빌드해도 LF 로 둔다
+# (Windows 의 core.autocrlf=true 가 CRLF 로 바꾸면 SKILL.md 머리말 검사와 설치 파일이 어긋난다)
+skills/** text eol=lf
