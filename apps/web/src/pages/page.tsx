@@ -8,7 +8,6 @@ import { Button } from '@/shared/ui/kit/Button';
 import { Reveal } from '@/shared/ui/kit/Reveal';
 import { TicketCard } from '@/shared/ui/kit/TicketCard';
 import {
-  ArchiveIcon,
   ArrowRightIcon,
   CheckIcon,
   CopyIcon,
@@ -120,7 +119,6 @@ function OnboardingPage() {
             >
               <Link to="/archive">
                 <Button variant="solid" size="lg">
-                  <ArchiveIcon size={16} />
                   <span>아카이브 스튜디오 열기</span>
                   <ArrowRightIcon size={15} />
                 </Button>
@@ -255,7 +253,6 @@ function OnboardingPage() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Link to="/archive">
                 <Button variant="solid" size="lg">
-                  <ArchiveIcon size={16} />
                   <span>아카이브 스튜디오 시작하기</span>
                   <ArrowRightIcon size={15} />
                 </Button>

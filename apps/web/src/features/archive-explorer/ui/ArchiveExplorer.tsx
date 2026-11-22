@@ -5,6 +5,7 @@ import {
   padId,
   type ArchiveItemDetail,
   type ArchiveProject,
+  type EvidenceKind,
 } from '@pinproof/shared';
 import { cn } from '@/shared/lib/cn';
 import { Badge } from '@/shared/ui/kit/Badge';
@@ -29,6 +30,8 @@ export interface ArchiveExplorerProps {
   onSelectItemKey: (key: string | null) => void;
   issueFilter: string | null;
   onClearIssueFilter: () => void;
+  kindFilter?: EvidenceKind | null;
+  onClearKindFilter?: () => void;
   onArchiveItems: (items: ArchiveItemDetail[], toArchived: boolean) => Promise<void>;
   onDeleteItems: (items: ArchiveItemDetail[]) => Promise<void>;
 }
@@ -46,6 +49,8 @@ export function ArchiveExplorer({
   onSelectItemKey,
   issueFilter,
   onClearIssueFilter,
+  kindFilter,
+  onClearKindFilter,
   onArchiveItems,
   onDeleteItems,
 }: ArchiveExplorerProps) {
@@ -57,7 +62,10 @@ export function ArchiveExplorer({
   const [showRawMd, setShowRawMd] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<ArchiveItemDetail[] | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    kind: 'archive' | 'restore' | 'delete';
+    items: ArchiveItemDetail[];
+  } | null>(null);
 
   const allCategories = useMemo(() => {
     const set = new Set<string>();
@@ -71,6 +79,7 @@ export function ArchiveExplorer({
       if (projectFilter !== 'all' && item.projectId !== projectFilter) return false;
       if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
       if (issueFilter && item.issueKey !== issueFilter) return false;
+      if (kindFilter && (item.kind ?? 'element') !== kindFilter) return false;
       if (statusTab === 'pending' && item.archived) return false;
       if (statusTab === 'archived' && !item.archived) return false;
       if (statusTab === 'with-shot' && !item.screenshotUrl) return false;
@@ -94,7 +103,7 @@ export function ArchiveExplorer({
       }
       return true;
     });
-  }, [items, projectFilter, categoryFilter, issueFilter, statusTab, query]);
+  }, [items, projectFilter, categoryFilter, issueFilter, kindFilter, statusTab, query]);
 
   const activeItem = useMemo(() => {
     if (selectedItemKey) {
@@ -224,6 +233,17 @@ export function ArchiveExplorer({
                   <XIcon size={12} />
                 </button>
               )}
+
+              {kindFilter && onClearKindFilter && (
+                <button
+                  type="button"
+                  onClick={onClearKindFilter}
+                  className="inline-flex items-center gap-1 rounded-[2px] border border-ink bg-wash-strong px-2 py-1 text-xs font-medium text-ink cursor-pointer"
+                >
+                  <span>유형: {KIND_LABEL[kindFilter]}</span>
+                  <XIcon size={12} />
+                </button>
+              )}
             </div>
 
             {/* 일괄 관리 바 */}
@@ -246,26 +266,26 @@ export function ArchiveExplorer({
                 <>
                   <Button
                     size="sm"
-                    onClick={async () => {
-                      await onArchiveItems(checkedItems, true);
-                      setCheckedKeys(new Set());
-                    }}
+                    onClick={() =>
+                      setPendingAction({ kind: 'archive', items: checkedItems })
+                    }
                   >
                     <ArchiveIcon size={13} /> 일괄 보관
                   </Button>
                   <Button
                     size="sm"
-                    onClick={async () => {
-                      await onArchiveItems(checkedItems, false);
-                      setCheckedKeys(new Set());
-                    }}
+                    onClick={() =>
+                      setPendingAction({ kind: 'restore', items: checkedItems })
+                    }
                   >
                     <RestoreIcon size={13} /> 대기 복원
                   </Button>
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() => setPendingDelete(checkedItems)}
+                    onClick={() =>
+                      setPendingAction({ kind: 'delete', items: checkedItems })
+                    }
                   >
                     <TrashIcon size={13} /> 삭제 ({checkedItems.length})
                   </Button>
@@ -388,7 +408,12 @@ export function ArchiveExplorer({
                   <Button
                     size="sm"
                     variant={activeItem.archived ? 'default' : 'solid'}
-                    onClick={() => onArchiveItems([activeItem], !activeItem.archived)}
+                    onClick={() =>
+                      setPendingAction({
+                        kind: activeItem.archived ? 'restore' : 'archive',
+                        items: [activeItem],
+                      })
+                    }
                   >
                     {activeItem.archived ? (
                       <>
@@ -407,7 +432,9 @@ export function ArchiveExplorer({
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() => setPendingDelete([activeItem])}
+                    onClick={() =>
+                      setPendingAction({ kind: 'delete', items: [activeItem] })
+                    }
                   >
                     <TrashIcon size={13} /> 삭제
                   </Button>
@@ -564,25 +591,55 @@ export function ArchiveExplorer({
         </div>
       )}
 
-      {/* 삭제 확인 다이얼로그 */}
+      {/* 보관 / 복원 / 삭제 커스텀 확인 다이얼로그 */}
       <ConfirmDialog
-        open={pendingDelete !== null}
+        open={pendingAction !== null}
         title={
-          pendingDelete && pendingDelete.length > 1
-            ? `${pendingDelete.length}개 항목을 삭제할까요?`
-            : '이 항목을 삭제할까요?'
+          !pendingAction
+            ? ''
+            : pendingAction.kind === 'delete'
+              ? pendingAction.items.length > 1
+                ? `${pendingAction.items.length}개 항목을 영구 삭제할까요?`
+                : `#${padId(pendingAction.items[0].id)} 항목을 영구 삭제할까요?`
+              : pendingAction.kind === 'archive'
+                ? pendingAction.items.length > 1
+                  ? `${pendingAction.items.length}개 항목을 보관함으로 옮길까요?`
+                  : `#${padId(pendingAction.items[0].id)} 항목을 보관 처리할까요?`
+                : pendingAction.items.length > 1
+                  ? `${pendingAction.items.length}개 항목을 대기 상태로 되돌릴까요?`
+                  : `#${padId(pendingAction.items[0].id)} 항목을 대기로 복원할까요?`
         }
-        description="삭제하면 연결된 프로젝트 폴더의 .md 파일과 스크린샷 이미지가 함께 제거되며 되돌릴 수 없습니다."
-        confirmLabel="영구 삭제"
-        destructive
+        description={
+          !pendingAction
+            ? ''
+            : pendingAction.kind === 'delete'
+              ? '삭제하면 연결된 프로젝트 폴더의 .md 파일과 스크린샷 이미지가 함께 제거되며 되돌릴 수 없습니다.'
+              : pendingAction.kind === 'archive'
+                ? '항목 상태를 완료로 변경하고 보관함(.pinproof/items/archive/)으로 이동합니다.'
+                : '항목 상태를 대기로 변경하고 작업 목록(.pinproof/items/)으로 되돌립니다.'
+        }
+        confirmLabel={
+          !pendingAction
+            ? '확인'
+            : pendingAction.kind === 'delete'
+              ? '영구 삭제'
+              : pendingAction.kind === 'archive'
+                ? '보관 처리'
+                : '대기로 복원'
+        }
+        destructive={pendingAction?.kind === 'delete'}
         onConfirm={async () => {
-          if (!pendingDelete) return;
-          const targets = pendingDelete;
-          setPendingDelete(null);
-          await onDeleteItems(targets);
+          if (!pendingAction) return;
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action.kind === 'delete') {
+            await onDeleteItems(action.items);
+          } else {
+            await onArchiveItems(action.items, action.kind === 'archive');
+          }
           setCheckedKeys(new Set());
         }}
-        onClose={() => setPendingDelete(null)}
+        onClose={() => setPendingAction(null)}
       />
     </div>
   );

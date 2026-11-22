@@ -23,7 +23,7 @@ export function useArchiveProjects() {
   const [sampleProjects, setSampleProjects] = useState<ArchiveProject[]>(() =>
     createSampleProjects(),
   );
-  const [showSampleWhenConnected, setShowSampleWhenConnected] = useState(false);
+  const [showSample, setShowSample] = useState(false);
   const [permissionNeeded, setPermissionNeeded] = useState<StoredProjectHandle[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const handleMapRef = useRef<Map<string, FileSystemDirectoryHandle>>(new Map());
@@ -65,13 +65,11 @@ export function useArchiveProjects() {
 
   const fsProjects = fsQuery.data ?? [];
   const hasConnectedFs = fsProjects.length > 0;
-  const usingSample = !hasConnectedFs || showSampleWhenConnected;
 
   const projects = useMemo(() => {
-    if (!hasConnectedFs) return sampleProjects;
-    if (showSampleWhenConnected) return [...fsProjects, ...sampleProjects];
+    if (showSample) return [...fsProjects, ...sampleProjects];
     return fsProjects;
-  }, [fsProjects, hasConnectedFs, sampleProjects, showSampleWhenConnected]);
+  }, [fsProjects, sampleProjects, showSample]);
 
   const connectFolder = useCallback(async () => {
     if (!supportsDirectoryPicker()) {
@@ -201,9 +199,8 @@ export function useArchiveProjects() {
     projects,
     isLoading: fsQuery.isLoading,
     hasConnectedFs,
-    usingSample,
-    showSampleWhenConnected,
-    setShowSampleWhenConnected,
+    showSample,
+    setShowSample,
     permissionNeeded,
     statusMessage,
     supportsFs: supportsDirectoryPicker(),
