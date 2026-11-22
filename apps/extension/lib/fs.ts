@@ -1,4 +1,14 @@
-import { appendExclude, WORKFLOW_MD, WORKFLOW_VERSION, workflowVersionOf } from './templates';
+import {
+  appendExclude,
+  appendSkillExclude,
+  SKILL_MD,
+  SKILL_PATH,
+  SKILL_VERSION,
+  skillVersionOf,
+  WORKFLOW_MD,
+  WORKFLOW_VERSION,
+  workflowVersionOf,
+} from './templates';
 import {
   idFromFileName,
   itemFileName,
@@ -221,6 +231,31 @@ export async function workflowStatus(root: Dir): Promise<WorkflowStatus | null> 
 export async function updateWorkflow(root: Dir): Promise<void> {
   const notes = (await getDir(root, [NOTES_DIR], true))!;
   await writeFile(notes, 'WORKFLOW.md', WORKFLOW_MD);
+}
+
+/** 선택 스킬(/trace-screen-data)의 설치 상태. current 0 = 버전 표시 없는 파일(직접 만들었거나 고친 것) */
+export type SkillStatus = { installed: false } | { installed: true; current: number; latest: number };
+
+export async function skillStatus(root: Dir): Promise<SkillStatus> {
+  const dir = await getDir(root, SKILL_PATH, false);
+  const text = dir ? await readText(dir, 'SKILL.md') : null;
+  if (text === null) return { installed: false };
+  return { installed: true, current: skillVersionOf(text), latest: SKILL_VERSION };
+}
+
+/**
+ * .claude/skills/trace-screen-data/SKILL.md 를 쓴다(있으면 교체).
+ * git 저장소면 .git/info/exclude 에 그 폴더를 넣어 팀 저장소에 흔적을 남기지 않는다.
+ * 돌려주는 값: exclude 에 넣었거나 이미 있었으면 'excluded', 워크트리라 못 넣었으면 'worktree', git 이 아니면 'none'
+ */
+export async function installSkill(root: Dir): Promise<'excluded' | 'worktree' | 'none'> {
+  await writeFile((await getDir(root, SKILL_PATH, true))!, 'SKILL.md', SKILL_MD);
+  if (await exists(root, '.git', 'directory')) {
+    const next = appendSkillExclude(await readExclude(root));
+    if (next !== null) await writeFile((await getDir(root, ['.git', 'info'], true))!, 'exclude', next);
+    return 'excluded';
+  }
+  return (await exists(root, '.git', 'file')) ? 'worktree' : 'none';
 }
 
 export async function listRecords(root: Dir): Promise<RecordSummary[]> {

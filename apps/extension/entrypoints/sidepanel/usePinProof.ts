@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectFolder, isSupportedUrl, routeOf, sitePattern } from '@/lib/connect';
+import { connectFolder, describeSkill, isSupportedUrl, LEGACY_CONFIRM, routeOf, sitePattern } from '@/lib/connect';
 import * as db from '@/lib/db';
 import {
   archiveRecord,
@@ -7,6 +7,7 @@ import {
   deleteRecord,
   ensurePermission,
   hasLegacy,
+  installSkill,
   listItems,
   listRecords,
   migrateLegacy,
@@ -14,12 +15,14 @@ import {
   nextItemId,
   readCategories,
   renameItemCategory,
+  skillStatus,
   updateWorkflow,
   workflowStatus,
   writeCategories,
   writeItem,
 } from '@/lib/fs';
-import type { WorkflowStatus } from '@/lib/fs';
+import type { SkillStatus, WorkflowStatus } from '@/lib/fs';
+import { SKILL_NAME } from '@/lib/templates';
 import { copyPrompt, itemFileName, itemsPrompt, padId, pagePath, sameTarget } from '@/lib/markdown';
 import { EvidenceEdit, MarkerInfo, OverlayState, PANEL_PORT, PortToContent, ToContent, ToPanel } from '@/lib/messages';
 import { evidenceFromTransfer } from '@/lib/paste';
@@ -88,6 +91,8 @@ export function usePinProof() {
   const [workflow, setWorkflow] = useState<WorkflowStatus | null>(null);
   /** 이전 이름(BugNotes)의 .bugnotes/ 폴더가 남아 있으면 [옮기기] 버튼을 보여준다 */
   const [legacy, setLegacy] = useState(false);
+  /** 선택 스킬(/trace-screen-data) 설치 상태. 없으면 [설치], 옛 버전이면 [업데이트] */
+  const [skill, setSkill] = useState<SkillStatus | null>(null);
 
   /** localhost 가 아닌 탭에서, 사용자가 이 사이트를 켜 두었는지 */
   const [siteAllowed, setSiteAllowed] = useState(false);
@@ -279,6 +284,7 @@ export function usePinProof() {
       setRecords(await listRecords(h));
       setWorkflow(await workflowStatus(h));
       setLegacy(await hasLegacy(h));
+      setSkill(await skillStatus(h));
     } catch (e) {
       say(`기록 목록을 읽지 못했습니다: ${String(e)}`, 'warn');
     }
@@ -771,7 +777,8 @@ export function usePinProof() {
   }, [tabId, onCaptured, onEdit, toContent, connectPort, postState]);
 
   // ---------- 폴더 연결 ----------
-  const connect = useCallback(async () => {
+  /** 폴더를 골라 연결한다. skill: 연결 버튼 아래 "점검 스킬도 설치" 체크박스 */
+  const connect = useCallback(async (skill = false) => {
     if (!origin) return;
     let root: FileSystemDirectoryHandle;
     try {
@@ -785,12 +792,10 @@ export function usePinProof() {
       const name = (e as DOMException).name;
       if (name === 'AbortError') return;
       // 사이드 패널에서 폴더 선택이 막히는 환경이면 익스텐션 탭에서 대신 고른다
-      await chrome.tabs.create({ url: chrome.runtime.getURL(`/connect.html?origin=${encodeURIComponent(origin)}`) });
+      await chrome.tabs.create({ url: chrome.runtime.getURL(`/connect.html?origin=${encodeURIComponent(origin)}${skill ? '&skill=1' : ''}`) });
       return;
     }
-    const ok = await connectFolder(origin, root, (items, folder) =>
-      USE_OPFS ? true : window.confirm(`"${folder}" 폴더에 다음 작업을 합니다.\n\n- ${items.join('\n- ')}\n\n계속할까요?`),
-    );
+    const ok = await connectFolder(origin, root, { skill, confirmLegacy: () => USE_OPFS || window.confirm(LEGACY_CONFIRM) });
     if (ok) {
       await loadOrigin();
       say(`"${root.name}" 폴더에 연결했습니다.`);
@@ -821,6 +826,29 @@ export function usePinProof() {
       say(`업데이트 실패: ${String(e)}`, 'warn');
     }
   }, [workflow, say]);
+
+  /** 선택 스킬 설치(없을 때) 또는 새 버전으로 교체(옛 버전일 때). 한 번 묻는다 */
+  const setupSkill = useCallback(async () => {
+    const h = handleRef.current;
+    if (!h) return;
+    const update = skill?.installed === true;
+    const git = (await h.getDirectoryHandle('.git').then(
+      () => 'repo' as const,
+      () => h.getFileHandle('.git').then(() => 'worktree' as const, () => 'none' as const),
+    ));
+    if (!window.confirm(describeSkill(git, update ? 'update' : 'install'))) return;
+    try {
+      const result = await installSkill(h);
+      setSkill(await skillStatus(h));
+      say(
+        `/${SKILL_NAME} 스킬을 ${update ? '업데이트' : '설치'}했습니다.` +
+          (result === 'worktree' ? ' 워크트리라 무시 설정은 쓰지 않았습니다. 커밋하지 않도록 주의하세요.' : ''),
+        result === 'worktree' ? 'warn' : 'ok',
+      );
+    } catch (e) {
+      say(`스킬 ${update ? '업데이트' : '설치'} 실패: ${String(e)}`, 'warn');
+    }
+  }, [skill, say]);
 
   const moveLegacy = useCallback(async () => {
     const h = handleRef.current;
@@ -986,6 +1014,8 @@ export function usePinProof() {
     upgradeWorkflow,
     legacy,
     moveLegacy,
+    skill,
+    setupSkill,
     connect,
     reconnect,
     disconnect,
