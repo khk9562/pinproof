@@ -1,0 +1,12 @@
+{
+  "name": "@pinproof/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./tokens.css",
+    "./fonts/*": "./fonts/*"
+  },
+  "types": "./src/index.ts"
+}

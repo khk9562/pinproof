@@ -159,3 +159,54 @@ export interface ItemSummary {
   archived: boolean;
   hasResult: boolean;
 }
+
+/** 웹 아카이브 대시보드에서 .pinproof/items/*.md 전체를 파싱한 상세 모델 */
+export interface ArchiveItemDetail extends ItemSummary {
+  projectId: string;
+  projectName: string;
+  env?: 'local' | 'deployed';
+  updated?: string;
+  url?: string;
+  reference?: string;
+  selector?: string;
+  screenshotRelPath?: string;
+  /** 브라우저 표시용 Blob URL 또는 Data URL */
+  screenshotUrl?: string;
+  /** frontmatter 및 처리 기록을 제외한 본문 마크다운 */
+  evidenceMarkdown: string;
+  /** ## 처리 기록 이하 마크다운 */
+  resultMarkdown?: string;
+  /** 원본 마크다운 전체 */
+  rawMarkdown: string;
+  /** AI가 이슈 단위로 묶은 식별자 (frontmatter issue / 처리 기록 내 이슈 키 / 자동 추론) */
+  issueKey?: string;
+  /** AI가 항목들을 하나로 묶은 기준 설명 */
+  issueReason?: string;
+  /** AI 처리 요약 한 줄 */
+  resolutionSummary?: string;
+  /** 수정된 파일 경로 목록 (처리 기록에서 추출) */
+  touchedFiles: string[];
+}
+
+export interface IssueCluster {
+  issueKey: string;
+  title: string;
+  reason: string;
+  projectId: string;
+  projectName: string;
+  /** 사람이 분류했던 원래 카테고리 목록 */
+  humanCategories: string[];
+  /** 이 이슈에 묶인 항목들 */
+  items: ArchiveItemDetail[];
+  /** 완료(보관 포함) 비율 0~100 */
+  completionRate: number;
+}
+
+export interface ArchiveProject {
+  id: string;
+  name: string;
+  source: 'fs' | 'sample';
+  categories: string[];
+  items: ArchiveItemDetail[];
+  lastLoadedAt: number;
+}

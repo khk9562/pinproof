@@ -1,4 +1,15 @@
-import { BugRecord, Evidence, EvidenceKind, Item, ItemStatus, ItemSummary, KIND_LABEL, RecordSummary } from './types';
+import {
+  ArchiveItemDetail,
+  BugRecord,
+  Evidence,
+  EvidenceKind,
+  IssueCluster,
+  Item,
+  ItemStatus,
+  ItemSummary,
+  KIND_LABEL,
+  RecordSummary,
+} from './types';
 
 /** Claude가 처리 후 덧붙이는 섹션. 이 줄부터 끝까지는 익스텐션이 절대 덮어쓰지 않는다. */
 export const RESULT_HEADING = '## 처리 기록';
@@ -222,17 +233,17 @@ export function mergeWithExisting(rendered: string, existing: string | null): st
   return `${rendered.trimEnd()}\n\n${existing.slice(idx)}`;
 }
 
-function findResultHeading(text: string): number {
+export function findResultHeading(text: string): number {
   if (text.startsWith(RESULT_HEADING)) return 0;
   const idx = text.indexOf(`\n${RESULT_HEADING}`);
   return idx === -1 ? -1 : idx + 1;
 }
 
 function frontmatter(text: string): Record<string, string> | null {
-  const m = text.match(/^---\n([\s\S]*?)\n---/);
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return null;
   const fields: Record<string, string> = {};
-  for (const line of m[1].split('\n')) {
+  for (const line of m[1].split(/\r?\n/)) {
     const i = line.indexOf(':');
     if (i === -1) continue;
     fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
@@ -341,7 +352,7 @@ export function statusOf(text: string): ItemStatus {
 
 /** frontmatter 의 status 줄만 바꾼다(보관함에서 되돌릴 때 대기로) */
 export function withStatus(text: string, status: ItemStatus): string {
-  return text.replace(/^(---\n[\s\S]*?)^status:.*$/m, `$1status: ${status}`);
+  return text.replace(/^(---\r?\n[\s\S]*?)^status:.*$/m, `$1status: ${status}`);
 }
 
 export function parseItemSummary(text: string, fileName: string, archived: boolean): ItemSummary | null {
@@ -377,4 +388,172 @@ export function itemsPrompt(fileNames: string[], category?: string): string {
     `\n처리를 끝낸 항목은 그 파일의 \`status\`를 \`완료\`로 바꾸고 \`## 처리 기록\`을 남겨줘.\n` +
     `지금 폴더에 \`.pinproof/\`가 없으면 \`git worktree list\` 첫 줄(메인 워크트리)의 \`.pinproof/\`에서 찾아 읽고, 코드 수정은 지금 폴더에서 해줘.`
   );
+}
+
+// ---------- 웹 아카이브 대시보드용 상세 파싱 ----------
+
+function extractFieldLine(body: string, label: string): string | undefined {
+  const re = new RegExp(`^-\\s*${label}:\\s*(.+)$`, 'm');
+  const m = body.match(re);
+  return m ? m[1].trim().replace(/^`+|`+$/g, '') : undefined;
+}
+
+function extractTouchedFiles(resultMarkdown?: string): string[] {
+  if (!resultMarkdown) return [];
+  const files = new Set<string>();
+  const matches = resultMarkdown.matchAll(/`([a-zA-Z0-9_./-]+\.(?:tsx?|jsx?|css|scss|vue|svelte|json|sql|java|py|go|rs|md))(?::\d+)?`/g);
+  for (const m of matches) {
+    if (!m[1].startsWith('.pinproof/')) {
+      files.add(m[1]);
+    }
+  }
+  return [...files];
+}
+
+function extractIssueMetadata(
+  fields: Record<string, string>,
+  resultMarkdown?: string,
+  page?: string,
+  touchedFiles: string[] = [],
+): { issueKey?: string; issueReason?: string; resolutionSummary?: string } {
+  const fmIssue = unquote(fields.issue || fields.issue_group || fields.cluster);
+  const fmReason = unquote(fields.issue_reason || fields.group_reason);
+
+  let issueKey = fmIssue || undefined;
+  let issueReason = fmReason || undefined;
+  let resolutionSummary: string | undefined;
+
+  if (resultMarkdown) {
+    const issueLine = resultMarkdown.match(/(?:이슈|Issue|묶음|그룹|Batch)\s*[:：]\s*(.+)/i);
+    if (!issueKey && issueLine) {
+      issueKey = issueLine[1].trim().replace(/^`+|`+$/g, '');
+    }
+    const reasonLine = resultMarkdown.match(/(?:묶음\s*기준|분류\s*기준|근거|원인|공통\s*원인)\s*[:：]\s*(.+)/i);
+    if (!issueReason && reasonLine) {
+      issueReason = reasonLine[1].trim();
+    }
+    const summaryLine = resultMarkdown.match(/(?:요약|조치|수정\s*내용|해결)\s*[:：]\s*(.+)/i);
+    if (summaryLine) {
+      resolutionSummary = summaryLine[1].trim();
+    } else {
+      const firstBullet = resultMarkdown
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => l.startsWith('- ') && !l.startsWith('- 시각:') && !l.startsWith('- 상태:'));
+      if (firstBullet) {
+        resolutionSummary = firstBullet.replace(/^-\s*/, '').trim();
+      }
+    }
+  }
+
+  // 명시적 이슈 키가 없으면 수정된 파일 또는 페이지 경로 기반으로 AI 묶음 추론
+  if (!issueKey && touchedFiles.length > 0) {
+    const primaryFile = touchedFiles[0].split('/').slice(-2).join('/');
+    issueKey = `FILE:${primaryFile}`;
+    if (!issueReason) {
+      issueReason = `동일 소스 파일(${primaryFile})을 수정해 함께 해결한 항목`;
+    }
+  } else if (!issueKey && page) {
+    const baseRoute = page.split('?')[0].split('#')[0] || '/';
+    issueKey = `ROUTE:${baseRoute}`;
+    if (!issueReason) {
+      issueReason = `같은 화면 경로(${baseRoute})에서 수집된 항목`;
+    }
+  }
+
+  return { issueKey, issueReason, resolutionSummary };
+}
+
+/** .pinproof/items/(archive/)NNN.md 전문을 대시보드 상세 객체로 파싱한다 */
+export function parseItemDetail(
+  text: string,
+  fileName: string,
+  archived: boolean,
+  projectId: string,
+  projectName: string,
+): ArchiveItemDetail | null {
+  const summary = parseItemSummary(text, fileName, archived);
+  const f = frontmatter(text);
+  if (!summary || !f) return null;
+
+  const withoutFrontmatter = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const resultIdx = findResultHeading(withoutFrontmatter);
+  const evidenceMarkdown =
+    resultIdx === -1 ? withoutFrontmatter.trim() : withoutFrontmatter.slice(0, resultIdx).trim();
+  const resultMarkdown =
+    resultIdx === -1 ? undefined : withoutFrontmatter.slice(resultIdx).trim();
+
+  const imgMatch = evidenceMarkdown.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  const screenshotRelPath = imgMatch ? imgMatch[1].trim() : undefined;
+  const touchedFiles = extractTouchedFiles(resultMarkdown);
+  const { issueKey, issueReason, resolutionSummary } = extractIssueMetadata(
+    f,
+    resultMarkdown,
+    summary.page,
+    touchedFiles,
+  );
+
+  return {
+    ...summary,
+    projectId,
+    projectName,
+    env: f.env === 'deployed' ? 'deployed' : f.env === 'local' ? 'local' : undefined,
+    updated: f.updated || undefined,
+    url: extractFieldLine(evidenceMarkdown, 'URL'),
+    reference: extractFieldLine(evidenceMarkdown, '참조'),
+    selector: extractFieldLine(evidenceMarkdown, 'selector'),
+    screenshotRelPath,
+    evidenceMarkdown,
+    resultMarkdown,
+    rawMarkdown: text,
+    issueKey,
+    issueReason,
+    resolutionSummary,
+    touchedFiles,
+  };
+}
+
+/** 항목 목록을 AI 이슈 클러스터 단위로 묶는다 */
+export function clusterItemsByIssue(items: ArchiveItemDetail[]): IssueCluster[] {
+  const groups = new Map<string, ArchiveItemDetail[]>();
+  for (const item of items) {
+    const key = `${item.projectId}::${item.issueKey || `CAT:${item.category}`}`;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+
+  const clusters: IssueCluster[] = [];
+  for (const [, list] of groups) {
+    const first = list[0];
+    const issueKey = first.issueKey || `CAT:${first.category}`;
+    const humanCategories = [...new Set(list.map((i) => i.category))];
+    const doneCount = list.filter((i) => i.status === '완료' || i.archived).length;
+    const reason =
+      list.find((i) => i.issueReason)?.issueReason ??
+      (humanCategories.length > 1
+        ? `사람이 ${humanCategories.join(' · ')}로 나눠 기록한 항목을 AI가 하나의 원인으로 통합`
+        : `${first.category} 카테고리 기준 묶음`);
+
+    const title = issueKey.startsWith('FILE:')
+      ? `소스 묶음 · ${issueKey.slice(5)}`
+      : issueKey.startsWith('ROUTE:')
+        ? `화면 묶음 · ${issueKey.slice(6)}`
+        : issueKey.startsWith('CAT:')
+          ? `카테고리 · ${issueKey.slice(4)}`
+          : issueKey;
+
+    clusters.push({
+      issueKey,
+      title,
+      reason,
+      projectId: first.projectId,
+      projectName: first.projectName,
+      humanCategories,
+      items: [...list].sort((a, b) => b.id - a.id),
+      completionRate: Math.round((doneCount / list.length) * 100),
+    });
+  }
+
+  return clusters.sort((a, b) => b.items.length - a.items.length);
 }
