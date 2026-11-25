@@ -104,7 +104,7 @@ export { default as SKILL_MD } from '../skills/trace-screen-data/SKILL.md?raw';
 export const SKILL_NAME = 'trace-screen-data';
 /** 프로젝트 안 설치 위치(루트 기준) */
 export const SKILL_PATH = ['.claude', 'skills', SKILL_NAME];
-export const SKILL_VERSION = 1;
+export const SKILL_VERSION = 2;
 
 /** SKILL.md 안의 버전 표시. 표시가 없으면(직접 만든 파일 등) 0 */
 export function skillVersionOf(text: string): number {
